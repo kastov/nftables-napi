@@ -97,6 +97,18 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: -1 }));
     });
 
+    it('should throw on addAddress with NaN timeout', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: NaN }));
+    });
+
+    it('should throw on addAddress with Infinity timeout', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: Infinity }));
+    });
+
+    it('should throw on addAddress with -Infinity timeout', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: -Infinity }));
+    });
+
     it('should throw on addAddress with CIDR notation', () => {
         assert.throws(() => nft.addAddress({ ip: '192.168.1.0/24', set: 'blacklist' }));
     });
@@ -126,6 +138,10 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         assert.throws(() => nft.removeAddress({ ip: '1.2.3.4', set: 'invalid' }));
     });
 
+    it('should throw on removeAddress without set', () => {
+        assert.throws(() => nft.removeAddress({ ip: '1.2.3.4' }), { name: 'TypeError' });
+    });
+
     // addAddresses validation
     it('should throw on addAddresses without object', () => {
         assert.throws(() => nft.addAddresses(['1.2.3.4']), { name: 'TypeError' });
@@ -143,6 +159,18 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4'], set: 'invalid' }));
     });
 
+    it('should throw on addAddresses with non-number timeout', () => {
+        assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4'], set: 'blacklist', timeout: 'bad' }), { name: 'TypeError' });
+    });
+
+    it('should throw on addAddresses with zero timeout', () => {
+        assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4'], set: 'blacklist', timeout: 0 }));
+    });
+
+    it('should throw on addAddresses with negative timeout', () => {
+        assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4'], set: 'blacklist', timeout: -1 }));
+    });
+
     // removeAddresses validation
     it('should throw on removeAddresses without object', () => {
         assert.throws(() => nft.removeAddresses(['1.2.3.4']), { name: 'TypeError' });
@@ -150,6 +178,14 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
 
     it('should throw on removeAddresses with invalid IP', () => {
         assert.throws(() => nft.removeAddresses({ ips: ['invalid'], set: 'blacklist' }));
+    });
+
+    it('should throw on removeAddresses without set', () => {
+        assert.throws(() => nft.removeAddresses({ ips: ['1.2.3.4'] }), { name: 'TypeError' });
+    });
+
+    it('should throw on removeAddresses with invalid set', () => {
+        assert.throws(() => nft.removeAddresses({ ips: ['1.2.3.4'], set: 'invalid' }));
     });
 });
 
