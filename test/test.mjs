@@ -5,116 +5,156 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { NftManager } = require('../lib/index.js');
 
-// Check if we can create context (need CAP_NET_ADMIN)
 let canCreateContext = false;
 let nft;
 try {
-    nft = new NftManager();
+    nft = new NftManager({
+        tableName: 'remnawave',
+        blacklistSetName: 'blacklist',
+        droplistSetName: 'droplist'
+    });
     canCreateContext = true;
 } catch {
-    // No root/CAP_NET_ADMIN — integration tests will be skipped
+    // No root/CAP_NET_ADMIN
 }
 
-describe('NftManager validation', () => {
-    // These tests verify synchronous argument validation.
-    // They may still need a valid context, so skip if no CAP_NET_ADMIN.
-
+describe('NftManager constructor validation', () => {
     it('should export NftManager as a function/class', () => {
         assert.equal(typeof NftManager, 'function');
     });
 
-    it('should throw on addAddress with no arguments', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddress(), { name: 'TypeError' });
+    it('should throw without options', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager(), { name: 'TypeError' });
     });
 
-    it('should throw on addAddress with one argument', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddress('1.2.3.4'), { name: 'TypeError' });
+    it('should throw with empty object', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({}), { name: 'TypeError' });
     });
 
-    it('should throw on addAddress with non-string ip', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddress(123, '10m'), { name: 'TypeError' });
+    it('should throw without tableName', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({
+            blacklistSetName: 'bl', droplistSetName: 'dl'
+        }), { name: 'TypeError' });
     });
 
-    it('should throw on addAddress with non-string timeout', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddress('1.2.3.4', 42), { name: 'TypeError' });
+    it('should throw without blacklistSetName', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({
+            tableName: 't', droplistSetName: 'dl'
+        }), { name: 'TypeError' });
     });
 
-    it('should throw on addAddress with invalid IP', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddress('not-an-ip', '10m'));
+    it('should throw without droplistSetName', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({
+            tableName: 't', blacklistSetName: 'bl'
+        }), { name: 'TypeError' });
     });
 
-    it('should throw on addAddress with invalid timeout', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddress('1.2.3.4', 'bad'));
+    it('should throw with non-string tableName', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({
+            tableName: 123, blacklistSetName: 'bl', droplistSetName: 'dl'
+        }), { name: 'TypeError' });
     });
 
-    it('should throw on removeAddress with no arguments', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.removeAddress(), { name: 'TypeError' });
-    });
-
-    it('should throw on removeAddress with non-string', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.removeAddress(42), { name: 'TypeError' });
-    });
-
-    it('should throw on removeAddress with invalid IP', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.removeAddress('invalid'));
-    });
-
-    it('should throw on addAddresses with non-array', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddresses('not-array', '10m'), { name: 'TypeError' });
-    });
-
-    it('should throw on addAddresses with non-string element', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddresses([123], '10m'), { name: 'TypeError' });
-    });
-
-    it('should throw on addAddresses with invalid IP in array', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddresses(['1.2.3.4', 'invalid'], '10m'));
-    });
-
-    it('should throw on addAddresses with invalid timeout', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.addAddresses(['1.2.3.4'], 'bad'));
-    });
-
-    it('should throw on removeAddresses with non-array', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.removeAddresses('not-array'), { name: 'TypeError' });
-    });
-
-    it('should throw on removeAddresses with invalid IP', { skip: !canCreateContext }, () => {
-        assert.throws(() => nft.removeAddresses(['invalid']), { name: 'Error' });
-    });
-
-    it('should accept empty options object', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({});
+    it('should create with valid options', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({
+            tableName: 'test', blacklistSetName: 'bl', droplistSetName: 'dl'
+        });
         assert.ok(mgr);
-    });
-
-    it('should accept strategy "drop"', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ strategy: 'drop' });
-        assert.ok(mgr);
-    });
-
-    it('should accept strategy "reject"', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ strategy: 'reject' });
-        assert.ok(mgr);
-    });
-
-    it('should accept strategy "tcp-reset"', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ strategy: 'tcp-reset' });
-        assert.ok(mgr);
-    });
-
-    it('should throw on invalid strategy value', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ strategy: 'invalid' }), { name: 'Error' });
-    });
-
-    it('should throw on non-string strategy', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ strategy: 42 }), { name: 'TypeError' });
     });
 });
 
-describe('NftManager integration', { skip: !canCreateContext }, () => {
+describe('NftManager method validation', { skip: !canCreateContext }, () => {
+    // addAddress validation
+    it('should throw on addAddress without object', () => {
+        assert.throws(() => nft.addAddress('1.2.3.4'), { name: 'TypeError' });
+    });
+
+    it('should throw on addAddress without ip', () => {
+        assert.throws(() => nft.addAddress({ set: 'blacklist' }), { name: 'TypeError' });
+    });
+
+    it('should throw on addAddress without set', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4' }), { name: 'TypeError' });
+    });
+
+    it('should throw on addAddress with invalid set', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'invalid' }));
+    });
+
+    it('should throw on addAddress with invalid IP', () => {
+        assert.throws(() => nft.addAddress({ ip: 'not-an-ip', set: 'blacklist' }));
+    });
+
+    it('should throw on addAddress with non-number timeout', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: 'bad' }), { name: 'TypeError' });
+    });
+
+    it('should throw on addAddress with zero timeout', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: 0 }));
+    });
+
+    it('should throw on addAddress with negative timeout', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: -1 }));
+    });
+
+    it('should throw on addAddress with CIDR notation', () => {
+        assert.throws(() => nft.addAddress({ ip: '192.168.1.0/24', set: 'blacklist' }));
+    });
+
+    it('should throw on addAddress with port notation', () => {
+        assert.throws(() => nft.addAddress({ ip: '192.168.1.1:8080', set: 'blacklist' }));
+    });
+
+    it('should throw on addAddress with empty IP', () => {
+        assert.throws(() => nft.addAddress({ ip: '', set: 'blacklist' }));
+    });
+
+    it('should throw on addAddress with whitespace IP', () => {
+        assert.throws(() => nft.addAddress({ ip: '  1.2.3.4', set: 'blacklist' }));
+    });
+
+    // removeAddress validation
+    it('should throw on removeAddress without object', () => {
+        assert.throws(() => nft.removeAddress('1.2.3.4'), { name: 'TypeError' });
+    });
+
+    it('should throw on removeAddress without ip', () => {
+        assert.throws(() => nft.removeAddress({ set: 'blacklist' }), { name: 'TypeError' });
+    });
+
+    it('should throw on removeAddress with invalid set', () => {
+        assert.throws(() => nft.removeAddress({ ip: '1.2.3.4', set: 'invalid' }));
+    });
+
+    // addAddresses validation
+    it('should throw on addAddresses without object', () => {
+        assert.throws(() => nft.addAddresses(['1.2.3.4']), { name: 'TypeError' });
+    });
+
+    it('should throw on addAddresses without ips array', () => {
+        assert.throws(() => nft.addAddresses({ ips: 'not-array', set: 'blacklist' }), { name: 'TypeError' });
+    });
+
+    it('should throw on addAddresses with invalid IP in array', () => {
+        assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4', 'invalid'], set: 'blacklist' }));
+    });
+
+    it('should throw on addAddresses with invalid set', () => {
+        assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4'], set: 'invalid' }));
+    });
+
+    // removeAddresses validation
+    it('should throw on removeAddresses without object', () => {
+        assert.throws(() => nft.removeAddresses(['1.2.3.4']), { name: 'TypeError' });
+    });
+
+    it('should throw on removeAddresses with invalid IP', () => {
+        assert.throws(() => nft.removeAddresses({ ips: ['invalid'], set: 'blacklist' }));
+    });
+});
+
+describe('NftManager integration (blacklist)', { skip: !canCreateContext }, () => {
     after(async () => {
-        // Cleanup
         try { await nft.deleteTable(); } catch { /* ignore */ }
     });
 
@@ -122,55 +162,67 @@ describe('NftManager integration', { skip: !canCreateContext }, () => {
         await nft.createTable();
     });
 
-    it('should create tables idempotently (second call)', async () => {
+    it('should create tables idempotently', async () => {
         await nft.createTable();
     });
 
-    it('should add IPv4 address to blacklist', async () => {
-        await nft.addAddress('192.168.99.99', '1m');
+    it('should add IPv4 with timeout', async () => {
+        await nft.addAddress({ ip: '192.168.99.99', set: 'blacklist', timeout: 60 });
     });
 
-    it('should add IPv6 address to blacklist', async () => {
-        await nft.addAddress('2001:db8::dead:beef', '2m');
+    it('should add IPv6 with timeout', async () => {
+        await nft.addAddress({ ip: '2001:db8::dead:beef', set: 'blacklist', timeout: 120 });
     });
 
-    it('should add another IPv4 with different timeout unit', async () => {
-        await nft.addAddress('10.0.0.1', '30s');
+    it('should add IPv4 permanent (no timeout)', async () => {
+        await nft.addAddress({ ip: '10.0.0.1', set: 'blacklist' });
     });
 
-    it('should remove IPv4 address', async () => {
-        await nft.removeAddress('192.168.99.99');
+    it('should remove IPv4', async () => {
+        await nft.removeAddress({ ip: '192.168.99.99', set: 'blacklist' });
     });
 
-    it('should remove IPv6 address', async () => {
-        await nft.removeAddress('2001:db8::dead:beef');
+    it('should remove IPv6', async () => {
+        await nft.removeAddress({ ip: '2001:db8::dead:beef', set: 'blacklist' });
     });
 
-    it('should remove non-existent address idempotently', async () => {
-        await nft.removeAddress('172.16.0.1');
+    it('should remove permanent address', async () => {
+        await nft.removeAddress({ ip: '10.0.0.1', set: 'blacklist' });
     });
 
-    it('should bulk add IPv4 and IPv6 addresses', async () => {
-        await nft.addAddresses([
-            '10.0.0.10', '10.0.0.11', '10.0.0.12',
-            '2001:db8::10', '2001:db8::11'
-        ], '5m');
+    it('should remove non-existent idempotently', async () => {
+        await nft.removeAddress({ ip: '172.16.0.1', set: 'blacklist' });
     });
 
-    it('should bulk remove addresses', async () => {
-        await nft.removeAddresses([
-            '10.0.0.10', '10.0.0.11', '10.0.0.12',
-            '2001:db8::10', '2001:db8::11'
-        ]);
+    it('should bulk add with timeout', async () => {
+        await nft.addAddresses({
+            ips: ['10.0.0.10', '10.0.0.11', '2001:db8::10'],
+            set: 'blacklist',
+            timeout: 300
+        });
     });
 
-    it('should bulk remove non-existent addresses idempotently', async () => {
-        await nft.removeAddresses(['172.16.0.100', '172.16.0.101']);
+    it('should bulk add permanent', async () => {
+        await nft.addAddresses({
+            ips: ['10.0.0.20', '10.0.0.21'],
+            set: 'blacklist'
+        });
     });
 
-    it('should handle empty arrays as no-op', async () => {
-        await nft.addAddresses([], '1m');
-        await nft.removeAddresses([]);
+    it('should bulk remove', async () => {
+        await nft.removeAddresses({
+            ips: ['10.0.0.10', '10.0.0.11', '2001:db8::10', '10.0.0.20', '10.0.0.21'],
+            set: 'blacklist'
+        });
+    });
+
+    it('should bulk remove non-existent idempotently', async () => {
+        await nft.removeAddresses({ ips: ['172.16.0.100'], set: 'blacklist' });
+    });
+
+    it('should handle empty arrays', async () => {
+        await nft.addAddresses({ ips: [], set: 'blacklist', timeout: 60 });
+        await nft.removeAddresses({ ips: [], set: 'blacklist' });
     });
 
     it('should delete tables', async () => {
@@ -182,46 +234,75 @@ describe('NftManager integration', { skip: !canCreateContext }, () => {
     });
 });
 
-describe('NftManager drop strategy', { skip: !canCreateContext }, () => {
-    let nftDrop;
-
+describe('NftManager integration (droplist)', { skip: !canCreateContext }, () => {
     after(async () => {
-        try { if (nftDrop) await nftDrop.deleteTable(); } catch { /* ignore */ }
+        try { await nft.deleteTable(); } catch { /* ignore */ }
     });
 
-    it('should create tables with drop strategy', async () => {
-        nftDrop = new NftManager({ strategy: 'drop' });
-        await nftDrop.createTable();
+    it('should create tables', async () => {
+        await nft.createTable();
     });
 
-    it('should add and remove address with drop strategy', async () => {
-        await nftDrop.addAddress('192.168.88.88', '1m');
-        await nftDrop.removeAddress('192.168.88.88');
+    it('should add IPv4 to droplist with timeout', async () => {
+        await nft.addAddress({ ip: '192.168.88.88', set: 'droplist', timeout: 60 });
     });
 
-    it('should delete tables with drop strategy', async () => {
-        await nftDrop.deleteTable();
+    it('should add IPv6 to droplist permanent', async () => {
+        await nft.addAddress({ ip: '2001:db8::cafe:babe', set: 'droplist' });
+    });
+
+    it('should remove from droplist', async () => {
+        await nft.removeAddress({ ip: '192.168.88.88', set: 'droplist' });
+    });
+
+    it('should remove non-existent from droplist idempotently', async () => {
+        await nft.removeAddress({ ip: '172.16.0.1', set: 'droplist' });
+    });
+
+    it('should bulk add to droplist', async () => {
+        await nft.addAddresses({ ips: ['10.1.1.1', '10.1.1.2'], set: 'droplist', timeout: 180 });
+    });
+
+    it('should bulk remove from droplist', async () => {
+        await nft.removeAddresses({ ips: ['10.1.1.1', '10.1.1.2', '2001:db8::cafe:babe'], set: 'droplist' });
+    });
+
+    it('should bulk remove non-existent from droplist', async () => {
+        await nft.removeAddresses({ ips: ['172.16.0.200'], set: 'droplist' });
+    });
+
+    it('should delete tables', async () => {
+        await nft.deleteTable();
     });
 });
 
-describe('NftManager tcp-reset strategy', { skip: !canCreateContext }, () => {
-    let nftRst;
+describe('NftManager integration (custom config)', { skip: !canCreateContext }, () => {
+    let custom;
 
     after(async () => {
-        try { if (nftRst) await nftRst.deleteTable(); } catch { /* ignore */ }
+        try { await custom.deleteTable(); } catch { /* ignore */ }
     });
 
-    it('should create tables with tcp-reset strategy', async () => {
-        nftRst = new NftManager({ strategy: 'tcp-reset' });
-        await nftRst.createTable();
+    it('should create with custom names', async () => {
+        custom = new NftManager({
+            tableName: 'testfw',
+            blacklistSetName: 'testbl',
+            droplistSetName: 'testdrop'
+        });
+        await custom.createTable();
     });
 
-    it('should add and remove address with tcp-reset strategy', async () => {
-        await nftRst.addAddress('192.168.77.77', '1m');
-        await nftRst.removeAddress('192.168.77.77');
+    it('should add and remove from custom blacklist', async () => {
+        await custom.addAddress({ ip: '10.99.99.1', set: 'blacklist', timeout: 60 });
+        await custom.removeAddress({ ip: '10.99.99.1', set: 'blacklist' });
     });
 
-    it('should delete tables with tcp-reset strategy', async () => {
-        await nftRst.deleteTable();
+    it('should add permanent to custom droplist', async () => {
+        await custom.addAddress({ ip: '10.99.99.2', set: 'droplist' });
+        await custom.removeAddress({ ip: '10.99.99.2', set: 'droplist' });
+    });
+
+    it('should delete custom tables', async () => {
+        await custom.deleteTable();
     });
 });

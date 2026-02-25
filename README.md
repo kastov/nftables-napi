@@ -33,28 +33,42 @@ RUN apt-get update && apt-get install -y libnftnl13 libmnl0 && rm -rf /var/lib/a
 ```js
 const { NftManager } = require('nftables-napi');
 
-const nft = new NftManager({ strategy: 'reject' });
+const nft = new NftManager({
+    tableName: 'remnawave',
+    blacklistSetName: 'blacklist',
+    droplistSetName: 'droplist'
+});
 
 await nft.createTable();
 
-await nft.addAddress('1.2.3.4', '30m');
-await nft.addAddress('2001:db8::1', '1h');
+// Add with timeout (seconds)
+await nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: 1800 });
+await nft.addAddress({ ip: '2001:db8::1', set: 'blacklist', timeout: 3600 });
 
-await nft.addAddresses(['10.0.0.1', '10.0.0.2'], '2h');
+// Add permanent (no timeout)
+await nft.addAddress({ ip: '5.6.7.8', set: 'droplist' });
 
-await nft.removeAddress('1.2.3.4');
-await nft.removeAddresses(['10.0.0.1', '10.0.0.2']);
+// Bulk add
+await nft.addAddresses({ ips: ['10.0.0.1', '10.0.0.2'], set: 'blacklist', timeout: 7200 });
+
+// Remove
+await nft.removeAddress({ ip: '1.2.3.4', set: 'blacklist' });
+await nft.removeAddresses({ ips: ['10.0.0.1', '10.0.0.2'], set: 'blacklist' });
 
 await nft.deleteTable();
 ```
 
 ## API
 
-### `new NftManager(options?)`
+### `new NftManager(options)`
 
-| Option | Type | Default | Description |
+| Option | Type | Required | Description |
 |---|---|---|---|
-| `strategy` | `'drop' \| 'reject' \| 'tcp-reset'` | `'reject'` | How to handle packets from blacklisted IPs |
+| `tableName` | `string` | Yes | Base table name (IPv6 auto-appends `'6'`) |
+| `blacklistSetName` | `string` | Yes | Blacklist set name (IPv6 auto-appends `'6'`) |
+| `droplistSetName` | `string` | Yes | Droplist set name (IPv6 auto-appends `'6'`) |
+
+Log prefixes are auto-generated: `'{setName}: '` for each set.
 
 ### Methods
 
@@ -62,18 +76,12 @@ All methods return `Promise<void>`.
 
 | Method | Description |
 |---|---|
-| `createTable()` | Create IPv4/IPv6 tables with blacklist sets and filter chains. Idempotent. |
+| `createTable()` | Create IPv4/IPv6 tables with blacklist and droplist sets. Idempotent. |
 | `deleteTable()` | Delete both tables. Idempotent. |
-| `addAddress(ip, timeout)` | Add IP to blacklist. Timeout: `"30s"`, `"10m"`, `"2h"`, `"7d"`. |
-| `removeAddress(ip)` | Remove IP from blacklist. Idempotent. |
-| `addAddresses(ips, timeout)` | Bulk add. Chunked for efficient netlink communication. |
-| `removeAddresses(ips)` | Bulk remove. Idempotent. |
-
-## Strategies
-
-- **`drop`** — silently discard packets
-- **`reject`** — respond with ICMP port-unreachable (default)
-- **`tcp-reset`** — TCP RST for TCP traffic, ICMP reject for non-TCP
+| `addAddress({ ip, set, timeout? })` | Add IP to set. `timeout` in seconds, omit for permanent. |
+| `removeAddress({ ip, set })` | Remove IP from set. Idempotent. |
+| `addAddresses({ ips, set, timeout? })` | Bulk add to set. Chunked for efficient netlink communication. |
+| `removeAddresses({ ips, set })` | Bulk remove from set. Idempotent. |
 
 ## Building from source
 

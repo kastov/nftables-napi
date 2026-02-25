@@ -1,93 +1,120 @@
 /**
- * Native nftables manager for remnawave firewall.
+ * Native nftables manager for Linux firewall.
+ * Manages IPv4/IPv6 blacklist/droplist tables via libnftnl + libmnl (direct netlink, no nft CLI).
  * Requires CAP_NET_ADMIN or root privileges.
  */
-/**
- * Firewall strategy for blacklisted IPs.
- */
-export type FirewallStrategy = 'drop' | 'reject' | 'tcp-reset';
 
+/** Target set for address operations. */
+export type TargetSet = 'blacklist' | 'droplist';
+
+/** Constructor options. All fields are required — no defaults. */
 export interface NftManagerOptions {
-    /**
-     * How to handle packets from blacklisted IPs.
-     * - 'drop': silently discard packets (no response sent to client)
-     * - 'reject': respond with ICMP port-unreachable (default)
-     * - 'tcp-reset': TCP RST for TCP traffic, ICMP reject for non-TCP
-     * @default 'reject'
-     */
-    strategy?: FirewallStrategy;
+    /** Base table name. IPv6 table auto-appends '6'. */
+    tableName: string;
+    /** Blacklist set name. IPv6 set auto-appends '6'. */
+    blacklistSetName: string;
+    /** Droplist set name. IPv6 set auto-appends '6'. */
+    droplistSetName: string;
+}
+
+/** Options for adding a single address. */
+export interface AddAddressOptions {
+    /** IPv4 or IPv6 address (e.g., "1.2.3.4" or "2001:db8::1"). */
+    ip: string;
+    /** Target set: 'blacklist' or 'droplist'. */
+    set: TargetSet;
+    /** Timeout in seconds. Omit for permanent ban. */
+    timeout?: number;
+}
+
+/** Options for removing a single address. */
+export interface RemoveAddressOptions {
+    /** IPv4 or IPv6 address to remove. */
+    ip: string;
+    /** Target set: 'blacklist' or 'droplist'. */
+    set: TargetSet;
+}
+
+/** Options for bulk adding addresses. */
+export interface AddAddressesOptions {
+    /** Array of IPv4/IPv6 addresses. */
+    ips: string[];
+    /** Target set: 'blacklist' or 'droplist'. */
+    set: TargetSet;
+    /** Timeout in seconds. Omit for permanent ban. */
+    timeout?: number;
+}
+
+/** Options for bulk removing addresses. */
+export interface RemoveAddressesOptions {
+    /** Array of IPv4/IPv6 addresses to remove. */
+    ips: string[];
+    /** Target set: 'blacklist' or 'droplist'. */
+    set: TargetSet;
 }
 
 export class NftManager {
-    constructor(options?: NftManagerOptions);
+    /**
+     * Creates a new NftManager instance.
+     * Opens a netlink socket and validates configuration.
+     *
+     * @param options - Required configuration with table and set names.
+     * @throws {TypeError} if options are missing or have wrong types
+     * @throws {Error} if netlink socket cannot be opened (missing CAP_NET_ADMIN)
+     */
+    constructor(options: NftManagerOptions);
 
     /**
-     * Creates both IPv4 (table ip remnawave) and IPv6 (table ip6 remnawave6)
-     * tables with blacklist sets and filter chains.
+     * Creates IPv4 and IPv6 tables with blacklist/droplist sets and filter chains.
      * Idempotent — destroys existing tables first, then recreates.
-     * @throws {Error} if nftables command fails
      */
     createTable(): Promise<void>;
 
     /**
-     * Adds an IP address to the blacklist with a timeout.
-     * Auto-detects IPv4 vs IPv6 and routes to the correct table/set.
-     *
-     * @param ip - IPv4 or IPv6 address (e.g., "1.2.3.4" or "2001:db8::1")
-     * @param timeout - Duration string: number + unit (s/m/h/d), e.g., "10m", "30s", "2h", "7d"
-     * @throws {TypeError} if arguments are missing or wrong type
-     * @throws {Error} if IP is invalid, timeout format is wrong, or nftables command fails
-     */
-    addAddress(ip: string, timeout: string): Promise<void>;
-
-    /**
-     * Removes an IP address from the blacklist.
-     * Auto-detects IPv4 vs IPv6. Idempotent — no error if IP not in set.
-     *
-     * @param ip - IPv4 or IPv6 address to remove
-     * @throws {TypeError} if argument is missing or wrong type
-     * @throws {Error} if IP is invalid or nftables command fails
-     */
-    removeAddress(ip: string): Promise<void>;
-
-    /**
-     * Adds multiple IP addresses to the blacklist in bulk with a timeout.
-     * Auto-detects IPv4 vs IPv6 for each address and routes to the correct table/set.
-     * Addresses are batched into chunks for efficient netlink communication.
-     *
-     * @param ips - Array of IPv4 or IPv6 addresses (e.g., ["1.2.3.4", "2001:db8::1"])
-     * @param timeout - Duration string: number + unit (s/m/h/d), e.g., "10m", "30s", "2h", "7d"
-     *
-     * **Note:** Addresses are processed in chunks. If a chunk fails after earlier
-     * chunks succeeded, previously added addresses remain committed (nftables
-     * does not support rollback). Retrying may cause some addresses to have
-     * refreshed timeouts.
-     *
-     * @throws {TypeError} if arguments are missing, wrong type, or array contains non-strings
-     * @throws {Error} if any IP is invalid, timeout format is wrong, or nftables command fails
-     */
-    addAddresses(ips: string[], timeout: string): Promise<void>;
-
-    /**
-     * Removes multiple IP addresses from the blacklist in bulk.
-     * Auto-detects IPv4 vs IPv6 for each address. Idempotent — no error if IPs are not in set.
-     * Addresses are batched into chunks for efficient netlink communication.
-     *
-     * @param ips - Array of IPv4 or IPv6 addresses to remove
-     *
-     * **Note:** Addresses are processed in chunks. If a chunk fails after earlier
-     * chunks succeeded, previously removed addresses remain removed. Since removal
-     * is idempotent, retrying the full operation is safe.
-     *
-     * @throws {TypeError} if argument is missing, wrong type, or array contains non-strings
-     * @throws {Error} if any IP is invalid or nftables command fails
-     */
-    removeAddresses(ips: string[]): Promise<void>;
-
-    /**
-     * Deletes both IPv4 and IPv6 remnawave tables.
+     * Deletes both IPv4 and IPv6 tables.
      * Idempotent — no error if tables don't exist.
-     * @throws {Error} if nftables command fails
      */
     deleteTable(): Promise<void>;
+
+    /**
+     * Adds an IP address to a set.
+     * Auto-detects IPv4 vs IPv6 and routes to the correct table/set.
+     *
+     * @param options - Address, target set, and optional timeout
+     * @throws {TypeError} if options are invalid
+     * @throws {Error} if IP is invalid or nftables operation fails
+     */
+    addAddress(options: AddAddressOptions): Promise<void>;
+
+    /**
+     * Removes an IP address from a set.
+     * Idempotent — no error if IP is not in the set.
+     *
+     * @param options - Address and target set
+     * @throws {TypeError} if options are invalid
+     * @throws {Error} if IP is invalid or nftables operation fails
+     */
+    removeAddress(options: RemoveAddressOptions): Promise<void>;
+
+    /**
+     * Adds multiple IP addresses to a set in bulk.
+     * Addresses are chunked for efficient netlink communication.
+     * Empty arrays are a no-op.
+     *
+     * @param options - Addresses, target set, and optional timeout
+     * @throws {TypeError} if options are invalid
+     * @throws {Error} if any IP is invalid or nftables operation fails
+     */
+    addAddresses(options: AddAddressesOptions): Promise<void>;
+
+    /**
+     * Removes multiple IP addresses from a set in bulk.
+     * Idempotent — no error if IPs are not in the set.
+     * Empty arrays are a no-op.
+     *
+     * @param options - Addresses and target set
+     * @throws {TypeError} if options are invalid
+     * @throws {Error} if any IP is invalid or nftables operation fails
+     */
+    removeAddresses(options: RemoveAddressesOptions): Promise<void>;
 }
