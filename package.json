@@ -1,7 +1,35 @@
 {
   "name": "nftables-napi",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Native Node.js binding for nftables via libnftnl+libmnl — nftables firewall management",
+  "author": {
+    "name": "kastov",
+    "url": "https://github.com/kastov"
+  },
+  "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/kastov/nftables-napi#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kastov/nftables-napi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kastov/nftables-napi/issues"
+  },
+  "keywords": [
+    "nftables",
+    "nft",
+    "firewall",
+    "netfilter",
+    "libnftnl",
+    "libmnl",
+    "netlink",
+    "iptables",
+    "ip-ban",
+    "blacklist",
+    "native",
+    "napi",
+    "node-addon"
+  ],
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
@@ -10,18 +38,17 @@
       "default": "./lib/index.js"
     }
   },
-  "gypfile": true,
   "files": [
     "lib/",
     "src/",
     "prebuilds/",
     "binding.gyp"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/kastov/nftables-napi.git"
+  "gypfile": true,
+  "engines": {
+    "node": ">=24.0.0",
+    "os": "linux"
   },
-  "homepage": "https://github.com/kastov/nftables-napi#readme",
   "scripts": {
     "install": "node-gyp-build || true",
     "build": "node-gyp rebuild",
@@ -31,15 +58,11 @@
   },
   "dependencies": {
     "node-gyp-build": "^4.8.4",
-    "node-addon-api": "^8.3.0"
+    "node-addon-api": "^8.5.0"
   },
   "devDependencies": {
     "node-gyp": "^12.2.0",
     "prebuildify": "^6.0.1",
-    "@types/node": "^22.0.0"
-  },
-  "engines": {
-    "node": ">=24.0.0"
-  },
-  "license": "AGPL-3.0-only"
+    "@types/node": ">= 24 < 25"
+  }
 }
