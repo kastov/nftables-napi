@@ -1,0 +1,8 @@
+node_modules/
+build/
+out-amd64/
+out-arm64/
+*.log
+/prebuilds
+.DS_Store
+example/
