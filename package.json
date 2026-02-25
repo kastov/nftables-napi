@@ -1,6 +1,6 @@
 {
   "name": "nftables-napi",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Native Node.js binding for nftables via libnftnl+libmnl — nftables firewall management",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
