@@ -5,8 +5,12 @@
 #include "netlink/table_ops.h"
 #include "netlink/set_ops.h"
 
+#include <cmath>
 #include <cstring>
+#include <optional>
 #include <vector>
+
+static constexpr double MAX_TIMEOUT_SEC = 4294967295.0; // UINT32_MAX seconds (~136 years)
 
 static ParsedAddr to_parsed_addr(const IpAddr& addr) {
     ParsedAddr pa{};
@@ -40,6 +44,42 @@ static std::vector<ParsedAddr> parse_ip_array(Napi::Env env, Napi::Array arr) {
     }
 
     return addrs;
+}
+
+// Returns the parsed TargetSet or sets a JS exception and returns std::nullopt.
+static std::optional<nft::TargetSet> parse_target_set(Napi::Env env, Napi::Object opts, const char* method_name) {
+    if (!opts.Has("set") || !opts.Get("set").IsString()) {
+        std::string msg = std::string(method_name) + ": 'set' is required and must be a string ('blacklist' or 'droplist')";
+        Napi::TypeError::New(env, msg).ThrowAsJavaScriptException();
+        return std::nullopt;
+    }
+    std::string set_str = opts.Get("set").As<Napi::String>().Utf8Value();
+    if (set_str == "blacklist") return nft::TargetSet::Blacklist;
+    if (set_str == "droplist") return nft::TargetSet::Droplist;
+    std::string msg = std::string(method_name) + ": 'set' must be 'blacklist' or 'droplist'";
+    Napi::Error::New(env, msg).ThrowAsJavaScriptException();
+    return std::nullopt;
+}
+
+// Returns timeout in ms (0 = permanent/no timeout). Sets JS exception on error.
+// Returns std::nullopt on error.
+static std::optional<uint64_t> parse_timeout(Napi::Env env, Napi::Object opts, const char* method_name) {
+    if (!opts.Has("timeout") || opts.Get("timeout").IsUndefined() || opts.Get("timeout").IsNull()) {
+        return uint64_t{0}; // permanent
+    }
+    Napi::Value tv = opts.Get("timeout");
+    if (!tv.IsNumber()) {
+        std::string msg = std::string(method_name) + ": 'timeout' must be a number (seconds)";
+        Napi::TypeError::New(env, msg).ThrowAsJavaScriptException();
+        return std::nullopt;
+    }
+    double timeout_sec = tv.As<Napi::Number>().DoubleValue();
+    if (std::isnan(timeout_sec) || timeout_sec <= 0 || timeout_sec > MAX_TIMEOUT_SEC) {
+        std::string msg = std::string(method_name) + ": 'timeout' must be a positive number (seconds)";
+        Napi::Error::New(env, msg).ThrowAsJavaScriptException();
+        return std::nullopt;
+    }
+    return static_cast<uint64_t>(timeout_sec * 1000.0);
 }
 
 Napi::Object NftManager::Init(Napi::Env env, Napi::Object exports) {
@@ -137,40 +177,12 @@ Napi::Value NftManager::AddAddress(const Napi::CallbackInfo& info) {
     std::string ip = opts.Get("ip").As<Napi::String>().Utf8Value();
 
     // set — required string ('blacklist' or 'droplist')
-    if (!opts.Has("set") || !opts.Get("set").IsString()) {
-        Napi::TypeError::New(env, "addAddress: 'set' is required and must be a string ('blacklist' or 'droplist')")
-            .ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-    std::string set_str = opts.Get("set").As<Napi::String>().Utf8Value();
-    nft::TargetSet target = nft::TargetSet::Blacklist;
-    if (set_str == "blacklist") {
-        target = nft::TargetSet::Blacklist;
-    } else if (set_str == "droplist") {
-        target = nft::TargetSet::Droplist;
-    } else {
-        Napi::Error::New(env, "addAddress: 'set' must be 'blacklist' or 'droplist'")
-            .ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
+    auto target = parse_target_set(env, opts, "addAddress");
+    if (!target) return env.Undefined();
 
     // timeout — optional number (seconds). If absent, 0 = permanent
-    uint64_t timeout_ms = 0;
-    if (opts.Has("timeout") && !opts.Get("timeout").IsUndefined() && !opts.Get("timeout").IsNull()) {
-        Napi::Value tv = opts.Get("timeout");
-        if (!tv.IsNumber()) {
-            Napi::TypeError::New(env, "addAddress: 'timeout' must be a number (seconds)")
-                .ThrowAsJavaScriptException();
-            return env.Undefined();
-        }
-        double timeout_sec = tv.As<Napi::Number>().DoubleValue();
-        if (timeout_sec <= 0 || timeout_sec > 4294967295.0) {
-            Napi::Error::New(env, "addAddress: 'timeout' must be a positive number (seconds)")
-                .ThrowAsJavaScriptException();
-            return env.Undefined();
-        }
-        timeout_ms = static_cast<uint64_t>(timeout_sec) * 1000;
-    }
+    auto timeout_ms = parse_timeout(env, opts, "addAddress");
+    if (!timeout_ms) return env.Undefined();
 
     // Validate IP
     IpAddr addr = parse_ip(ip);
@@ -182,7 +194,7 @@ Napi::Value NftManager::AddAddress(const Napi::CallbackInfo& info) {
 
     std::vector<ParsedAddr> addrs;
     addrs.push_back(to_parsed_addr(addr));
-    auto op = std::make_unique<BulkAddSetElemOp>(std::move(addrs), timeout_ms, config_, target);
+    auto op = std::make_unique<BulkAddSetElemOp>(std::move(addrs), *timeout_ms, config_, *target);
 
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();
@@ -210,22 +222,8 @@ Napi::Value NftManager::RemoveAddress(const Napi::CallbackInfo& info) {
     std::string ip = opts.Get("ip").As<Napi::String>().Utf8Value();
 
     // set — required string ('blacklist' or 'droplist')
-    if (!opts.Has("set") || !opts.Get("set").IsString()) {
-        Napi::TypeError::New(env, "removeAddress: 'set' is required and must be a string ('blacklist' or 'droplist')")
-            .ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-    std::string set_str = opts.Get("set").As<Napi::String>().Utf8Value();
-    nft::TargetSet target = nft::TargetSet::Blacklist;
-    if (set_str == "blacklist") {
-        target = nft::TargetSet::Blacklist;
-    } else if (set_str == "droplist") {
-        target = nft::TargetSet::Droplist;
-    } else {
-        Napi::Error::New(env, "removeAddress: 'set' must be 'blacklist' or 'droplist'")
-            .ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
+    auto target = parse_target_set(env, opts, "removeAddress");
+    if (!target) return env.Undefined();
 
     // Validate IP
     IpAddr addr = parse_ip(ip);
@@ -237,7 +235,7 @@ Napi::Value NftManager::RemoveAddress(const Napi::CallbackInfo& info) {
 
     std::vector<ParsedAddr> addrs;
     addrs.push_back(to_parsed_addr(addr));
-    auto op = std::make_unique<BulkDelSetElemOp>(std::move(addrs), config_, target);
+    auto op = std::make_unique<BulkDelSetElemOp>(std::move(addrs), config_, *target);
 
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();
@@ -265,40 +263,12 @@ Napi::Value NftManager::AddAddresses(const Napi::CallbackInfo& info) {
     Napi::Array arr = opts.Get("ips").As<Napi::Array>();
 
     // set — required string ('blacklist' or 'droplist')
-    if (!opts.Has("set") || !opts.Get("set").IsString()) {
-        Napi::TypeError::New(env, "addAddresses: 'set' is required and must be a string ('blacklist' or 'droplist')")
-            .ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-    std::string set_str = opts.Get("set").As<Napi::String>().Utf8Value();
-    nft::TargetSet target = nft::TargetSet::Blacklist;
-    if (set_str == "blacklist") {
-        target = nft::TargetSet::Blacklist;
-    } else if (set_str == "droplist") {
-        target = nft::TargetSet::Droplist;
-    } else {
-        Napi::Error::New(env, "addAddresses: 'set' must be 'blacklist' or 'droplist'")
-            .ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
+    auto target = parse_target_set(env, opts, "addAddresses");
+    if (!target) return env.Undefined();
 
     // timeout — optional number (seconds). If absent, 0 = permanent
-    uint64_t timeout_ms = 0;
-    if (opts.Has("timeout") && !opts.Get("timeout").IsUndefined() && !opts.Get("timeout").IsNull()) {
-        Napi::Value tv = opts.Get("timeout");
-        if (!tv.IsNumber()) {
-            Napi::TypeError::New(env, "addAddresses: 'timeout' must be a number (seconds)")
-                .ThrowAsJavaScriptException();
-            return env.Undefined();
-        }
-        double timeout_sec = tv.As<Napi::Number>().DoubleValue();
-        if (timeout_sec <= 0 || timeout_sec > 4294967295.0) {
-            Napi::Error::New(env, "addAddresses: 'timeout' must be a positive number (seconds)")
-                .ThrowAsJavaScriptException();
-            return env.Undefined();
-        }
-        timeout_ms = static_cast<uint64_t>(timeout_sec) * 1000;
-    }
+    auto timeout_ms = parse_timeout(env, opts, "addAddresses");
+    if (!timeout_ms) return env.Undefined();
 
     std::vector<ParsedAddr> addrs = parse_ip_array(env, arr);
     if (env.IsExceptionPending()) return env.Undefined();
@@ -311,7 +281,7 @@ Napi::Value NftManager::AddAddresses(const Napi::CallbackInfo& info) {
         return promise;
     }
 
-    auto op = std::make_unique<BulkAddSetElemOp>(std::move(addrs), timeout_ms, config_, target);
+    auto op = std::make_unique<BulkAddSetElemOp>(std::move(addrs), *timeout_ms, config_, *target);
 
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();
@@ -339,22 +309,8 @@ Napi::Value NftManager::RemoveAddresses(const Napi::CallbackInfo& info) {
     Napi::Array arr = opts.Get("ips").As<Napi::Array>();
 
     // set — required string ('blacklist' or 'droplist')
-    if (!opts.Has("set") || !opts.Get("set").IsString()) {
-        Napi::TypeError::New(env, "removeAddresses: 'set' is required and must be a string ('blacklist' or 'droplist')")
-            .ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-    std::string set_str = opts.Get("set").As<Napi::String>().Utf8Value();
-    nft::TargetSet target = nft::TargetSet::Blacklist;
-    if (set_str == "blacklist") {
-        target = nft::TargetSet::Blacklist;
-    } else if (set_str == "droplist") {
-        target = nft::TargetSet::Droplist;
-    } else {
-        Napi::Error::New(env, "removeAddresses: 'set' must be 'blacklist' or 'droplist'")
-            .ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
+    auto target = parse_target_set(env, opts, "removeAddresses");
+    if (!target) return env.Undefined();
 
     std::vector<ParsedAddr> addrs = parse_ip_array(env, arr);
     if (env.IsExceptionPending()) return env.Undefined();
@@ -367,7 +323,7 @@ Napi::Value NftManager::RemoveAddresses(const Napi::CallbackInfo& info) {
         return promise;
     }
 
-    auto op = std::make_unique<BulkDelSetElemOp>(std::move(addrs), config_, target);
+    auto op = std::make_unique<BulkDelSetElemOp>(std::move(addrs), config_, *target);
 
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();
