@@ -19,7 +19,3 @@ struct IpAddr {
 // Parse IP string, validate via inet_pton, store binary form.
 // Returns IpAddr with family=Invalid on failure.
 IpAddr parse_ip(const std::string& ip);
-
-// Convert timeout string (e.g. "10m", "30s", "2h", "7d") to milliseconds.
-// Returns 0 on invalid input or overflow.
-uint64_t parse_timeout_ms(const std::string& timeout);

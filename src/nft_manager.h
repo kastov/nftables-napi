@@ -4,9 +4,9 @@
 #include <memory>
 #include <queue>
 
-#include "netlink/constants.h"
 #include "netlink/nl_socket.h"
-#include "netlink/operations.h"
+#include "netlink/operation.h"
+#include "netlink/nft_config.h"
 
 struct PendingOp {
     std::unique_ptr<NlOperation> op;
@@ -38,7 +38,7 @@ private:
     // management (Enqueue, DrainQueue, OnWorkerDone) runs on the JS main thread.
     // This invariant MUST be preserved if refactoring the queue.
     std::shared_ptr<NlSocket> sock_;
+    std::shared_ptr<const nft::NftConfig> config_;
     std::queue<PendingOp> queue_;
     bool worker_active_ = false;
-    nft::FirewallStrategy strategy_ = nft::FirewallStrategy::Reject;
 };
