@@ -11,8 +11,11 @@ static uint32_t alloc_seq_block() {
     return counter.fetch_add(nft::SEQ_BLOCK_SIZE);
 }
 
-NlBatch::NlBatch()
-    : NlBatch(static_cast<size_t>(sysconf(_SC_PAGESIZE)) * nft::DEFAULT_BUF_PAGES) {}
+NlBatch::NlBatch() : NlBatch([]() -> size_t {
+    long ps = sysconf(_SC_PAGESIZE);
+    if (ps <= 0) ps = 4096;
+    return static_cast<size_t>(ps) * nft::DEFAULT_BUF_PAGES;
+}()) {}
 
 NlBatch::NlBatch(size_t buf_size)
     : buf_(std::make_unique<char[]>(buf_size)),

@@ -3,7 +3,7 @@
 #include <cstdint>
 
 struct ParsedAddr {
-    uint32_t family;       // NFPROTO_IPV4 or NFPROTO_IPV6
+    uint32_t family;       // nft::FAMILY_IPV4 or nft::FAMILY_IPV6 (== NFPROTO_IPV4/IPV6)
     uint8_t bytes[16];
     uint32_t len;          // 4 for IPv4, 16 for IPv6
 };

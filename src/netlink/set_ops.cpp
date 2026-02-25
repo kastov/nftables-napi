@@ -15,6 +15,9 @@ extern "C" {
 
 using namespace nft;
 
+static_assert(nft::FAMILY_IPV4 == NFPROTO_IPV4, "nft::FAMILY_IPV4 must match NFPROTO_IPV4");
+static_assert(nft::FAMILY_IPV6 == NFPROTO_IPV6, "nft::FAMILY_IPV6 must match NFPROTO_IPV6");
+
 enum class SetElemAction { Add, Del };
 
 static NlResult bulk_set_elem_op(
