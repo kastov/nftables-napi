@@ -8,7 +8,6 @@ extern "C" {
 
 #include <cstdint>
 #include <memory>
-#include <string>
 
 #include "nl_result.h"
 
@@ -32,7 +31,6 @@ public:
 
 private:
     std::unique_ptr<char[]> buf_;
-    size_t buf_size_;
     struct mnl_nlmsg_batch* batch_;
     uint32_t seq_;
 };

@@ -16,13 +16,13 @@ NlBatch::NlBatch()
 
 NlBatch::NlBatch(size_t buf_size)
     : buf_(std::make_unique<char[]>(buf_size)),
-      buf_size_(buf_size),
       batch_(nullptr),
-      seq_(alloc_seq_block()) {
-    batch_ = mnl_nlmsg_batch_start(buf_.get(), buf_size_);
+      seq_(0) {
+    batch_ = mnl_nlmsg_batch_start(buf_.get(), buf_size);
     if (!batch_)
         return;
 
+    seq_ = alloc_seq_block();
     nftnl_batch_begin(static_cast<char*>(mnl_nlmsg_batch_current(batch_)), seq_++);
     mnl_nlmsg_batch_next(batch_);
 }
@@ -60,5 +60,5 @@ NlResult NlBatch::execute(NlSocket& sock, bool ignore_enoent) {
     nftnl_batch_end(static_cast<char*>(mnl_nlmsg_batch_current(batch_)), seq_++);
     mnl_nlmsg_batch_next(batch_);
 
-    return sock.send_batch(batch_, seq_, ignore_enoent);
+    return sock.send_batch(batch_, ignore_enoent);
 }

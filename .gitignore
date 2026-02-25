@@ -6,3 +6,4 @@ out-arm64/
 /prebuilds
 .DS_Store
 example/
+.serena

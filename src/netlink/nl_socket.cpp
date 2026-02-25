@@ -59,8 +59,9 @@ NlSocket::NlSocket() : nl_(nullptr), portid_(0) {
     // Failures are non-fatal; the kernel may cap at rmem_max/wmem_max.
     static constexpr int SOCK_BUF_SIZE = 256 * 1024;
     int fd = mnl_socket_get_fd(nl_);
-    setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &SOCK_BUF_SIZE, sizeof(SOCK_BUF_SIZE));
-    setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &SOCK_BUF_SIZE, sizeof(SOCK_BUF_SIZE));
+    // Non-fatal: kernel may reject buffer size increase
+    (void)setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &SOCK_BUF_SIZE, sizeof(SOCK_BUF_SIZE));
+    (void)setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &SOCK_BUF_SIZE, sizeof(SOCK_BUF_SIZE));
 
     portid_ = mnl_socket_get_portid(nl_);
 }
@@ -74,7 +75,7 @@ bool NlSocket::is_valid() const {
     return nl_ != nullptr;
 }
 
-NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, uint32_t seq, bool ignore_enoent) {
+NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent) {
     ssize_t sent = mnl_socket_sendto(nl_,
                                      mnl_nlmsg_batch_head(batch),
                                      mnl_nlmsg_batch_size(batch));
@@ -97,7 +98,7 @@ NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, uint32_t seq, bool 
     if (ret < 0)
         return {false, std::string("mnl_socket_recvfrom: ") + strerror(errno)};
     while (ret > 0) {
-        int cb_ret = mnl_cb_run2(recv_buf, static_cast<size_t>(ret), seq, portid_,
+        int cb_ret = mnl_cb_run2(recv_buf, static_cast<size_t>(ret), 0, portid_,
                                   nullptr, &ctx, cb_ctl, NLMSG_ERROR + 1);
         if (cb_ret <= 0)
             break;
