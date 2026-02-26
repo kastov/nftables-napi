@@ -46,17 +46,26 @@ static std::vector<ParsedAddr> parse_ip_array(Napi::Env env, Napi::Array arr) {
     return addrs;
 }
 
-// Returns the parsed TargetSet or sets a JS exception and returns std::nullopt.
-static std::optional<nft::TargetSet> parse_target_set(Napi::Env env, Napi::Object opts, const char* method_name) {
+static std::optional<size_t> parse_set_name(Napi::Env env, Napi::Object opts,
+                                             const char* method_name,
+                                             const nft::NftConfig& cfg) {
     if (!opts.Has("set") || !opts.Get("set").IsString()) {
-        std::string msg = std::string(method_name) + ": 'set' is required and must be a string ('blacklist' or 'droplist')";
+        std::string msg = std::string(method_name) + ": 'set' is required and must be a string";
         Napi::TypeError::New(env, msg).ThrowAsJavaScriptException();
         return std::nullopt;
     }
     std::string set_str = opts.Get("set").As<Napi::String>().Utf8Value();
-    if (set_str == "blacklist") return nft::TargetSet::Blacklist;
-    if (set_str == "droplist") return nft::TargetSet::Droplist;
-    std::string msg = std::string(method_name) + ": 'set' must be 'blacklist' or 'droplist'";
+
+    for (size_t i = 0; i < cfg.sets.size(); ++i) {
+        if (cfg.sets[i].name == set_str) return i;
+    }
+
+    std::string valid;
+    for (size_t i = 0; i < cfg.sets.size(); ++i) {
+        if (i > 0) valid += ", ";
+        valid += "'" + cfg.sets[i].name + "'";
+    }
+    std::string msg = std::string(method_name) + ": 'set' must be one of: " + valid;
     Napi::Error::New(env, msg).ThrowAsJavaScriptException();
     return std::nullopt;
 }
@@ -102,45 +111,69 @@ NftManager::NftManager(const Napi::CallbackInfo& info)
     : Napi::ObjectWrap<NftManager>(info) {
     Napi::Env env = info.Env();
 
-    // 1. Validate options object exists
     if (info.Length() < 1 || !info[0].IsObject()) {
         Napi::TypeError::New(env,
-            "NftManager requires options object with tableName, blacklistSetName, droplistSetName")
+            "NftManager requires options object with tableName and sets")
             .ThrowAsJavaScriptException();
         return;
     }
 
     Napi::Object opts = info[0].As<Napi::Object>();
 
-    // 2. Extract and validate 3 required string fields
     if (!opts.Has("tableName") || !opts.Get("tableName").IsString()) {
         Napi::TypeError::New(env, "NftManager: 'tableName' is required and must be a string")
             .ThrowAsJavaScriptException();
         return;
     }
-    if (!opts.Has("blacklistSetName") || !opts.Get("blacklistSetName").IsString()) {
-        Napi::TypeError::New(env, "NftManager: 'blacklistSetName' is required and must be a string")
+
+    if (!opts.Has("sets") || !opts.Get("sets").IsArray()) {
+        Napi::TypeError::New(env, "NftManager: 'sets' is required and must be an array of strings")
             .ThrowAsJavaScriptException();
         return;
     }
-    if (!opts.Has("droplistSetName") || !opts.Get("droplistSetName").IsString()) {
-        Napi::TypeError::New(env, "NftManager: 'droplistSetName' is required and must be a string")
+
+    Napi::Array sets_arr = opts.Get("sets").As<Napi::Array>();
+    uint32_t len = sets_arr.Length();
+
+    if (len == 0) {
+        Napi::Error::New(env, "NftManager: 'sets' must contain at least one set name")
             .ThrowAsJavaScriptException();
         return;
+    }
+
+    std::vector<std::string> set_names;
+    set_names.reserve(len);
+
+    for (uint32_t i = 0; i < len; ++i) {
+        Napi::Value val = sets_arr[i];
+        if (!val.IsString()) {
+            Napi::TypeError::New(env, "NftManager: 'sets[" + std::to_string(i) + "]' must be a string")
+                .ThrowAsJavaScriptException();
+            return;
+        }
+        std::string name = val.As<Napi::String>().Utf8Value();
+        if (name.empty()) {
+            Napi::Error::New(env, "NftManager: 'sets[" + std::to_string(i) + "]' must not be empty")
+                .ThrowAsJavaScriptException();
+            return;
+        }
+        for (size_t j = 0; j < set_names.size(); ++j) {
+            if (set_names[j] == name) {
+                Napi::Error::New(env, "NftManager: duplicate set name '" + name + "'")
+                    .ThrowAsJavaScriptException();
+                return;
+            }
+        }
+        set_names.push_back(std::move(name));
     }
 
     std::string table_name = opts.Get("tableName").As<Napi::String>().Utf8Value();
-    std::string blacklist_set_name = opts.Get("blacklistSetName").As<Napi::String>().Utf8Value();
-    std::string droplist_set_name = opts.Get("droplistSetName").As<Napi::String>().Utf8Value();
 
-    // 3. Create NftConfig from names
     config_ = std::make_shared<const nft::NftConfig>(
-        nft::NftConfig::from_names(table_name, blacklist_set_name, droplist_set_name));
+        nft::NftConfig::from_names(table_name, set_names));
 
-    // 4. Open netlink socket
     sock_ = std::make_shared<NlSocket>();
 
-    // 5. Validate socket
     if (!sock_->is_valid()) {
         Napi::Error::New(env, "Failed to open netlink socket. Ensure CAP_NET_ADMIN or root.")
             .ThrowAsJavaScriptException();
@@ -176,9 +209,9 @@ Napi::Value NftManager::AddAddress(const Napi::CallbackInfo& info) {
     }
     std::string ip = opts.Get("ip").As<Napi::String>().Utf8Value();
 
-    // set — required string ('blacklist' or 'droplist')
-    auto target = parse_target_set(env, opts, "addAddress");
-    if (!target) return env.Undefined();
+    // set — required string
+    auto set_idx = parse_set_name(env, opts, "addAddress", *config_);
+    if (!set_idx) return env.Undefined();
 
     // timeout — optional number (seconds). If absent, 0 = permanent
     auto timeout_ms = parse_timeout(env, opts, "addAddress");
@@ -194,7 +227,7 @@ Napi::Value NftManager::AddAddress(const Napi::CallbackInfo& info) {
 
     std::vector<ParsedAddr> addrs;
     addrs.push_back(to_parsed_addr(addr));
-    auto op = std::make_unique<BulkAddSetElemOp>(std::move(addrs), *timeout_ms, config_, *target);
+    auto op = std::make_unique<BulkAddSetElemOp>(std::move(addrs), *timeout_ms, config_, *set_idx);
 
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();
@@ -221,9 +254,9 @@ Napi::Value NftManager::RemoveAddress(const Napi::CallbackInfo& info) {
     }
     std::string ip = opts.Get("ip").As<Napi::String>().Utf8Value();
 
-    // set — required string ('blacklist' or 'droplist')
-    auto target = parse_target_set(env, opts, "removeAddress");
-    if (!target) return env.Undefined();
+    // set — required string
+    auto set_idx = parse_set_name(env, opts, "removeAddress", *config_);
+    if (!set_idx) return env.Undefined();
 
     // Validate IP
     IpAddr addr = parse_ip(ip);
@@ -235,7 +268,7 @@ Napi::Value NftManager::RemoveAddress(const Napi::CallbackInfo& info) {
 
     std::vector<ParsedAddr> addrs;
     addrs.push_back(to_parsed_addr(addr));
-    auto op = std::make_unique<BulkDelSetElemOp>(std::move(addrs), config_, *target);
+    auto op = std::make_unique<BulkDelSetElemOp>(std::move(addrs), config_, *set_idx);
 
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();
@@ -262,9 +295,9 @@ Napi::Value NftManager::AddAddresses(const Napi::CallbackInfo& info) {
     }
     Napi::Array arr = opts.Get("ips").As<Napi::Array>();
 
-    // set — required string ('blacklist' or 'droplist')
-    auto target = parse_target_set(env, opts, "addAddresses");
-    if (!target) return env.Undefined();
+    // set — required string
+    auto set_idx = parse_set_name(env, opts, "addAddresses", *config_);
+    if (!set_idx) return env.Undefined();
 
     // timeout — optional number (seconds). If absent, 0 = permanent
     auto timeout_ms = parse_timeout(env, opts, "addAddresses");
@@ -281,7 +314,7 @@ Napi::Value NftManager::AddAddresses(const Napi::CallbackInfo& info) {
         return promise;
     }
 
-    auto op = std::make_unique<BulkAddSetElemOp>(std::move(addrs), *timeout_ms, config_, *target);
+    auto op = std::make_unique<BulkAddSetElemOp>(std::move(addrs), *timeout_ms, config_, *set_idx);
 
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();
@@ -308,9 +341,9 @@ Napi::Value NftManager::RemoveAddresses(const Napi::CallbackInfo& info) {
     }
     Napi::Array arr = opts.Get("ips").As<Napi::Array>();
 
-    // set — required string ('blacklist' or 'droplist')
-    auto target = parse_target_set(env, opts, "removeAddresses");
-    if (!target) return env.Undefined();
+    // set — required string
+    auto set_idx = parse_set_name(env, opts, "removeAddresses", *config_);
+    if (!set_idx) return env.Undefined();
 
     std::vector<ParsedAddr> addrs = parse_ip_array(env, arr);
     if (env.IsExceptionPending()) return env.Undefined();
@@ -323,7 +356,7 @@ Napi::Value NftManager::RemoveAddresses(const Napi::CallbackInfo& info) {
         return promise;
     }
 
-    auto op = std::make_unique<BulkDelSetElemOp>(std::move(addrs), config_, *target);
+    auto op = std::make_unique<BulkDelSetElemOp>(std::move(addrs), config_, *set_idx);
 
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();

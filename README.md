@@ -1,6 +1,6 @@
 # nftables-napi
 
-Native Node.js binding for nftables via libnftnl + libmnl. Manages IPv4/IPv6 blacklist tables with timeout support through direct netlink communication — no shell commands, no `nft` CLI.
+Native Node.js binding for nftables via libnftnl + libmnl. Manages IPv4/IPv6 tables with dynamic sets and timeout support through direct netlink communication — no shell commands, no `nft` CLI.
 
 Requires Linux with `CAP_NET_ADMIN` or root.
 
@@ -35,8 +35,7 @@ const { NftManager } = require("nftables-napi");
 
 const nft = new NftManager({
   tableName: "tablename",
-  blacklistSetName: "blacklist",
-  droplistSetName: "droplist",
+  sets: ["blacklist", "droplist"],
 });
 
 await nft.createTable();
@@ -62,13 +61,10 @@ await nft.deleteTable();
 
 ### `new NftManager(options)`
 
-| Option             | Type     | Required | Description                                  |
-| ------------------ | -------- | -------- | -------------------------------------------- |
-| `tableName`        | `string` | Yes      | Base table name (IPv6 auto-appends `'6'`)    |
-| `blacklistSetName` | `string` | Yes      | Blacklist set name (IPv6 auto-appends `'6'`) |
-| `droplistSetName`  | `string` | Yes      | Droplist set name (IPv6 auto-appends `'6'`)  |
-
-Log prefixes are auto-generated: `'{setName}: '` for each set.
+| Option      | Type       | Required | Description                                                                                      |
+| ----------- | ---------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `tableName` | `string`   | Yes      | Base table name (IPv6 table auto-appends `'6'`)                                                  |
+| `sets`      | `string[]` | Yes      | Set names (1+, unique, non-empty). IPv6 sets auto-append `'6'`. Log prefix: `'{name}: '` |
 
 ### Methods
 
@@ -76,8 +72,8 @@ All methods return `Promise<void>`.
 
 | Method                                 | Description                                                           |
 | -------------------------------------- | --------------------------------------------------------------------- |
-| `createTable()`                        | Create IPv4/IPv6 tables with blacklist and droplist sets. Idempotent. |
-| `deleteTable()`                        | Delete both tables. Idempotent.                                       |
+| `createTable()`                        | Create IPv4/IPv6 tables with all configured sets and filter chains. Idempotent. |
+| `deleteTable()`                        | Delete both tables. Idempotent.                                                 |
 | `addAddress({ ip, set, timeout? })`    | Add IP to set. `timeout` in seconds, omit for permanent.              |
 | `removeAddress({ ip, set })`           | Remove IP from set. Idempotent.                                       |
 | `addAddresses({ ips, set, timeout? })` | Bulk add to set. Chunked for efficient netlink communication.         |

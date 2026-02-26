@@ -13,8 +13,6 @@ extern "C" {
 
 #include <algorithm>
 
-using namespace nft;
-
 static_assert(nft::FAMILY_IPV4 == NFPROTO_IPV4, "nft::FAMILY_IPV4 must match NFPROTO_IPV4");
 static_assert(nft::FAMILY_IPV6 == NFPROTO_IPV6, "nft::FAMILY_IPV6 must match NFPROTO_IPV6");
 
@@ -25,10 +23,9 @@ static NlResult bulk_set_elem_op(
     NlSocket& sock,
     SetElemAction action,
     const nft::NftConfig& cfg,
-    nft::TargetSet target,
+    size_t set_idx,
     uint64_t timeout_ms = 0)
 {
-    // Partition by family
     std::vector<const ParsedAddr*> v4, v6;
     for (const auto& a : addrs) {
         if (a.family == NFPROTO_IPV4) v4.push_back(&a);
@@ -41,20 +38,20 @@ static NlResult bulk_set_elem_op(
         ? (NLM_F_CREATE | NLM_F_ACK) : NLM_F_ACK;
     const bool ignore_enoent = (action == SetElemAction::Del);
 
-    // Helper lambda to process one family
+    const auto& sd = cfg.sets[set_idx];
+
     auto process = [&](uint32_t family, const std::vector<const ParsedAddr*>& family_addrs) -> NlResult {
         if (family_addrs.empty()) return {true, ""};
 
         const char* table = (family == NFPROTO_IPV4)
             ? cfg.table_v4.c_str() : cfg.table_v6.c_str();
         const char* set_name = (family == NFPROTO_IPV4)
-            ? cfg.resolve_set_v4(target).c_str()
-            : cfg.resolve_set_v6(target).c_str();
-        uint32_t key_type = (family == NFPROTO_IPV4) ? DATATYPE_IPADDR : DATATYPE_IP6ADDR;
-        uint32_t key_len = (family == NFPROTO_IPV4) ? IPV4_ADDR_LEN : IPV6_ADDR_LEN;
+            ? sd.name.c_str() : sd.name_v6.c_str();
+        uint32_t key_type = (family == NFPROTO_IPV4) ? nft::DATATYPE_IPADDR : nft::DATATYPE_IP6ADDR;
+        uint32_t key_len = (family == NFPROTO_IPV4) ? nft::IPV4_ADDR_LEN : nft::IPV6_ADDR_LEN;
 
-        for (size_t offset = 0; offset < family_addrs.size(); offset += BULK_CHUNK_SIZE) {
-            size_t end = std::min(offset + static_cast<size_t>(BULK_CHUNK_SIZE), family_addrs.size());
+        for (size_t offset = 0; offset < family_addrs.size(); offset += nft::BULK_CHUNK_SIZE) {
+            size_t end = std::min(offset + static_cast<size_t>(nft::BULK_CHUNK_SIZE), family_addrs.size());
 
             auto s = nft::make_set();
             if (!s) return {false, "nftnl_set_alloc failed"};
@@ -72,7 +69,7 @@ static NlResult bulk_set_elem_op(
                 if (timeout_ms > 0) {
                     nftnl_set_elem_set_u64(e, NFTNL_SET_ELEM_TIMEOUT, timeout_ms);
                 }
-                nftnl_set_elem_add(s.get(), e); // set owns e now
+                nftnl_set_elem_add(s.get(), e);
             }
 
             NlBatch batch;
@@ -96,18 +93,18 @@ static NlResult bulk_set_elem_op(
 }
 
 BulkAddSetElemOp::BulkAddSetElemOp(std::vector<ParsedAddr> addrs, uint64_t timeout_ms,
-                                   std::shared_ptr<const nft::NftConfig> config, nft::TargetSet target)
+                                   std::shared_ptr<const nft::NftConfig> config, size_t set_idx)
     : addrs_(std::move(addrs)), timeout_ms_(timeout_ms),
-      cfg_(std::move(config)), target_(target) {}
+      cfg_(std::move(config)), set_idx_(set_idx) {}
 
 NlResult BulkAddSetElemOp::execute(NlSocket& sock) {
-    return bulk_set_elem_op(addrs_, sock, SetElemAction::Add, *cfg_, target_, timeout_ms_);
+    return bulk_set_elem_op(addrs_, sock, SetElemAction::Add, *cfg_, set_idx_, timeout_ms_);
 }
 
 BulkDelSetElemOp::BulkDelSetElemOp(std::vector<ParsedAddr> addrs,
-                                   std::shared_ptr<const nft::NftConfig> config, nft::TargetSet target)
-    : addrs_(std::move(addrs)), cfg_(std::move(config)), target_(target) {}
+                                   std::shared_ptr<const nft::NftConfig> config, size_t set_idx)
+    : addrs_(std::move(addrs)), cfg_(std::move(config)), set_idx_(set_idx) {}
 
 NlResult BulkDelSetElemOp::execute(NlSocket& sock) {
-    return bulk_set_elem_op(addrs_, sock, SetElemAction::Del, *cfg_, target_);
+    return bulk_set_elem_op(addrs_, sock, SetElemAction::Del, *cfg_, set_idx_);
 }

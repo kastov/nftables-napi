@@ -158,19 +158,13 @@ NlResult CreateTableOp::execute(NlSocket& sock) {
         || !add_table(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), NFT_MSG_NEWTABLE, NLM_F_CREATE))
         return {false, "failed to build tables"};
 
-    // Blacklist sets
-    if (!add_set(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), cfg_->set_v4.c_str(),
-                 DATATYPE_IPADDR, IPV4_ADDR_LEN, sid++)
-        || !add_set(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), cfg_->set_v6.c_str(),
-                    DATATYPE_IP6ADDR, IPV6_ADDR_LEN, sid++))
-        return {false, "failed to build blacklist sets"};
-
-    // Droplist sets
-    if (!add_set(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), cfg_->drop_set_v4.c_str(),
-                 DATATYPE_IPADDR, IPV4_ADDR_LEN, sid++)
-        || !add_set(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), cfg_->drop_set_v6.c_str(),
-                    DATATYPE_IP6ADDR, IPV6_ADDR_LEN, sid++))
-        return {false, "failed to build droplist sets"};
+    for (const auto& sd : cfg_->sets) {
+        if (!add_set(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), sd.name.c_str(),
+                     DATATYPE_IPADDR, IPV4_ADDR_LEN, sid++)
+            || !add_set(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), sd.name_v6.c_str(),
+                        DATATYPE_IP6ADDR, IPV6_ADDR_LEN, sid++))
+            return {false, "failed to build set '" + sd.name + "'"};
+    }
 
     if (!add_chain(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_INPUT, NF_INET_LOCAL_IN)
         || !add_chain(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_FORWARD, NF_INET_FORWARD)
@@ -178,31 +172,18 @@ NlResult CreateTableOp::execute(NlSocket& sock) {
         || !add_chain(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_FORWARD, NF_INET_FORWARD))
         return {false, "failed to build chains"};
 
-    const char* bl_lp = cfg_->blacklist_log_prefix.c_str();
-
-    // Blacklist rules
-    if (!add_rule(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_INPUT,
-                  cfg_->set_v4.c_str(), IPV4_SRC_OFFSET, IPV4_ADDR_LEN, bl_lp)
-        || !add_rule(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_FORWARD,
-                     cfg_->set_v4.c_str(), IPV4_SRC_OFFSET, IPV4_ADDR_LEN, bl_lp)
-        || !add_rule(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_INPUT,
-                     cfg_->set_v6.c_str(), IPV6_SRC_OFFSET, IPV6_ADDR_LEN, bl_lp)
-        || !add_rule(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_FORWARD,
-                     cfg_->set_v6.c_str(), IPV6_SRC_OFFSET, IPV6_ADDR_LEN, bl_lp))
-        return {false, "failed to build blacklist rules"};
-
-    const char* dl_lp = cfg_->droplist_log_prefix.c_str();
-
-    // Droplist rules
-    if (!add_rule(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_INPUT,
-                  cfg_->drop_set_v4.c_str(), IPV4_SRC_OFFSET, IPV4_ADDR_LEN, dl_lp)
-        || !add_rule(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_FORWARD,
-                     cfg_->drop_set_v4.c_str(), IPV4_SRC_OFFSET, IPV4_ADDR_LEN, dl_lp)
-        || !add_rule(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_INPUT,
-                     cfg_->drop_set_v6.c_str(), IPV6_SRC_OFFSET, IPV6_ADDR_LEN, dl_lp)
-        || !add_rule(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_FORWARD,
-                     cfg_->drop_set_v6.c_str(), IPV6_SRC_OFFSET, IPV6_ADDR_LEN, dl_lp))
-        return {false, "failed to build droplist rules"};
+    for (const auto& sd : cfg_->sets) {
+        const char* lp = sd.log_prefix.c_str();
+        if (!add_rule(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_INPUT,
+                      sd.name.c_str(), IPV4_SRC_OFFSET, IPV4_ADDR_LEN, lp)
+            || !add_rule(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_FORWARD,
+                         sd.name.c_str(), IPV4_SRC_OFFSET, IPV4_ADDR_LEN, lp)
+            || !add_rule(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_INPUT,
+                         sd.name_v6.c_str(), IPV6_SRC_OFFSET, IPV6_ADDR_LEN, lp)
+            || !add_rule(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_FORWARD,
+                         sd.name_v6.c_str(), IPV6_SRC_OFFSET, IPV6_ADDR_LEN, lp))
+            return {false, "failed to build rules for set '" + sd.name + "'"};
+    }
 
     return batch.execute(sock);
 }

@@ -7,8 +7,6 @@ const { NftManager } = await import('./lib/index.js');
 
 const rl = createInterface({ input: stdin, output: stdout });
 
-const SETS = ['blacklist', 'droplist'];
-
 let nft = null;
 
 function printMenu() {
@@ -29,9 +27,7 @@ async function prompt(msg) {
 }
 
 async function askSet() {
-  const set = await prompt(`  set (${SETS.join('/')}): `);
-  if (!SETS.includes(set)) throw new Error(`Invalid set: ${set}`);
-  return set;
+  return await prompt('  set name: ');
 }
 
 async function askTimeout() {
@@ -44,10 +40,10 @@ async function askTimeout() {
 
 async function createManager() {
   const tableName = await prompt('  tableName [remnawave]: ') || 'remnawave';
-  const blacklistSetName = await prompt('  blacklistSetName [blacklist]: ') || 'blacklist';
-  const droplistSetName = await prompt('  droplistSetName [droplist]: ') || 'droplist';
-  nft = new NftManager({ tableName, blacklistSetName, droplistSetName });
-  console.log(`  -> NftManager created (table=${tableName}, blacklist=${blacklistSetName}, droplist=${droplistSetName})`);
+  const setsRaw = await prompt('  sets (comma-separated) [blacklist,droplist]: ') || 'blacklist,droplist';
+  const sets = setsRaw.split(',').map(s => s.trim()).filter(Boolean);
+  nft = new NftManager({ tableName, sets });
+  console.log(`  -> NftManager created (table=${tableName}, sets=[${sets.join(', ')}])`);
 }
 
 async function run(fn) {

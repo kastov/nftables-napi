@@ -10,13 +10,14 @@ let nft;
 try {
     nft = new NftManager({
         tableName: 'remnawave',
-        blacklistSetName: 'blacklist',
-        droplistSetName: 'droplist'
+        sets: ['blacklist', 'droplist']
     });
     canCreateContext = true;
 } catch {
     // No root/CAP_NET_ADMIN
 }
+
+// ─── Constructor validation ─────────────────────────────────────────────────
 
 describe('NftManager constructor validation', () => {
     it('should export NftManager as a function/class', () => {
@@ -32,36 +33,54 @@ describe('NftManager constructor validation', () => {
     });
 
     it('should throw without tableName', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({
-            blacklistSetName: 'bl', droplistSetName: 'dl'
-        }), { name: 'TypeError' });
-    });
-
-    it('should throw without blacklistSetName', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({
-            tableName: 't', droplistSetName: 'dl'
-        }), { name: 'TypeError' });
-    });
-
-    it('should throw without droplistSetName', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({
-            tableName: 't', blacklistSetName: 'bl'
-        }), { name: 'TypeError' });
+        assert.throws(() => new NftManager({ sets: ['bl'] }), { name: 'TypeError' });
     });
 
     it('should throw with non-string tableName', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({
-            tableName: 123, blacklistSetName: 'bl', droplistSetName: 'dl'
-        }), { name: 'TypeError' });
+        assert.throws(() => new NftManager({ tableName: 123, sets: ['bl'] }), { name: 'TypeError' });
     });
 
-    it('should create with valid options', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({
-            tableName: 'test', blacklistSetName: 'bl', droplistSetName: 'dl'
-        });
+    it('should throw without sets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't' }), { name: 'TypeError' });
+    });
+
+    it('should throw with non-array sets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: 'bl' }), { name: 'TypeError' });
+    });
+
+    it('should throw with empty sets array', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: [] }));
+    });
+
+    it('should throw with non-string element in sets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: [123] }), { name: 'TypeError' });
+    });
+
+    it('should throw with empty string in sets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: [''] }));
+    });
+
+    it('should throw with duplicate set names', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl', 'bl'] }));
+    });
+
+    it('should create with single set', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', sets: ['ban'] });
+        assert.ok(mgr);
+    });
+
+    it('should create with two sets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', sets: ['bl', 'dl'] });
+        assert.ok(mgr);
+    });
+
+    it('should create with three sets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', sets: ['a', 'b', 'c'] });
         assert.ok(mgr);
     });
 });
+
+// ─── Method validation ──────────────────────────────────────────────────────
 
 describe('NftManager method validation', { skip: !canCreateContext }, () => {
     // addAddress validation
@@ -77,8 +96,8 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         assert.throws(() => nft.addAddress({ ip: '1.2.3.4' }), { name: 'TypeError' });
     });
 
-    it('should throw on addAddress with invalid set', () => {
-        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'invalid' }));
+    it('should throw on addAddress with invalid set name', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'nonexistent' }));
     });
 
     it('should throw on addAddress with invalid IP', () => {
@@ -189,6 +208,8 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
     });
 });
 
+// ─── Integration: blacklist set ─────────────────────────────────────────────
+
 describe('NftManager integration (blacklist)', { skip: !canCreateContext }, () => {
     after(async () => {
         try { await nft.deleteTable(); } catch { /* ignore */ }
@@ -270,6 +291,8 @@ describe('NftManager integration (blacklist)', { skip: !canCreateContext }, () =
     });
 });
 
+// ─── Integration: droplist set ──────────────────────────────────────────────
+
 describe('NftManager integration (droplist)', { skip: !canCreateContext }, () => {
     after(async () => {
         try { await nft.deleteTable(); } catch { /* ignore */ }
@@ -312,6 +335,8 @@ describe('NftManager integration (droplist)', { skip: !canCreateContext }, () =>
     });
 });
 
+// ─── Integration: custom config with actual names ───────────────────────────
+
 describe('NftManager integration (custom config)', { skip: !canCreateContext }, () => {
     let custom;
 
@@ -322,23 +347,103 @@ describe('NftManager integration (custom config)', { skip: !canCreateContext }, 
     it('should create with custom names', async () => {
         custom = new NftManager({
             tableName: 'testfw',
-            blacklistSetName: 'testbl',
-            droplistSetName: 'testdrop'
+            sets: ['testbl', 'testdrop']
         });
         await custom.createTable();
     });
 
-    it('should add and remove from custom blacklist', async () => {
-        await custom.addAddress({ ip: '10.99.99.1', set: 'blacklist', timeout: 60 });
-        await custom.removeAddress({ ip: '10.99.99.1', set: 'blacklist' });
+    it('should add and remove from custom set', async () => {
+        await custom.addAddress({ ip: '10.99.99.1', set: 'testbl', timeout: 60 });
+        await custom.removeAddress({ ip: '10.99.99.1', set: 'testbl' });
     });
 
-    it('should add permanent to custom droplist', async () => {
-        await custom.addAddress({ ip: '10.99.99.2', set: 'droplist' });
-        await custom.removeAddress({ ip: '10.99.99.2', set: 'droplist' });
+    it('should add permanent to second custom set', async () => {
+        await custom.addAddress({ ip: '10.99.99.2', set: 'testdrop' });
+        await custom.removeAddress({ ip: '10.99.99.2', set: 'testdrop' });
     });
 
     it('should delete custom tables', async () => {
         await custom.deleteTable();
+    });
+});
+
+// ─── Integration: 3+ sets ───────────────────────────────────────────────────
+
+describe('NftManager integration (three sets)', { skip: !canCreateContext }, () => {
+    let multi;
+
+    after(async () => {
+        try { await multi.deleteTable(); } catch { /* ignore */ }
+    });
+
+    it('should create with three sets', async () => {
+        multi = new NftManager({
+            tableName: 'multitest',
+            sets: ['banlist', 'droplist', 'ratelimit']
+        });
+        await multi.createTable();
+    });
+
+    it('should add to first set', async () => {
+        await multi.addAddress({ ip: '10.0.0.1', set: 'banlist', timeout: 60 });
+    });
+
+    it('should add to second set', async () => {
+        await multi.addAddress({ ip: '10.0.0.2', set: 'droplist' });
+    });
+
+    it('should add to third set', async () => {
+        await multi.addAddress({ ip: '10.0.0.3', set: 'ratelimit', timeout: 30 });
+    });
+
+    it('should add IPv6 to third set', async () => {
+        await multi.addAddress({ ip: '2001:db8::99', set: 'ratelimit', timeout: 30 });
+    });
+
+    it('should reject invalid set name', () => {
+        assert.throws(() => multi.addAddress({ ip: '10.0.0.4', set: 'nonexistent' }));
+    });
+
+    it('should bulk add to third set', async () => {
+        await multi.addAddresses({ ips: ['10.0.0.10', '10.0.0.11'], set: 'ratelimit', timeout: 120 });
+    });
+
+    it('should remove from all sets', async () => {
+        await multi.removeAddress({ ip: '10.0.0.1', set: 'banlist' });
+        await multi.removeAddress({ ip: '10.0.0.2', set: 'droplist' });
+        await multi.removeAddress({ ip: '10.0.0.3', set: 'ratelimit' });
+        await multi.removeAddress({ ip: '2001:db8::99', set: 'ratelimit' });
+        await multi.removeAddresses({ ips: ['10.0.0.10', '10.0.0.11'], set: 'ratelimit' });
+    });
+
+    it('should delete tables', async () => {
+        await multi.deleteTable();
+    });
+});
+
+// ─── Integration: single set ────────────────────────────────────────────────
+
+describe('NftManager integration (single set)', { skip: !canCreateContext }, () => {
+    let single;
+
+    after(async () => {
+        try { await single.deleteTable(); } catch { /* ignore */ }
+    });
+
+    it('should create with single set', async () => {
+        single = new NftManager({
+            tableName: 'singletest',
+            sets: ['ban']
+        });
+        await single.createTable();
+    });
+
+    it('should add and remove from single set', async () => {
+        await single.addAddress({ ip: '10.0.0.1', set: 'ban', timeout: 60 });
+        await single.removeAddress({ ip: '10.0.0.1', set: 'ban' });
+    });
+
+    it('should delete tables', async () => {
+        await single.deleteTable();
     });
 });
