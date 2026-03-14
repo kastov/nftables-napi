@@ -70,8 +70,8 @@ static bool add_counter_obj(NlBatch& batch, uint32_t family, const char* table,
 static bool add_set(NlBatch& batch, uint32_t family, const char* table,
                     const char* name, uint32_t key_type, uint32_t key_len,
                     uint32_t set_id,
-                    const uint8_t* concat_field_lens = nullptr,
-                    size_t concat_field_count = 0) {
+                    const uint32_t* concat_field_lens = nullptr,
+                    size_t concat_field_bytes = 0) {
     auto s = nft::make_set();
     if (!s) return false;
     nftnl_set_set_str(s.get(), NFTNL_SET_TABLE, table);
@@ -79,12 +79,16 @@ static bool add_set(NlBatch& batch, uint32_t family, const char* table,
     nftnl_set_set_u32(s.get(), NFTNL_SET_FAMILY, family);
     nftnl_set_set_u32(s.get(), NFTNL_SET_KEY_TYPE, key_type);
     nftnl_set_set_u32(s.get(), NFTNL_SET_KEY_LEN, key_len);
-    nftnl_set_set_u32(s.get(), NFTNL_SET_FLAGS, NFT_SET_TIMEOUT | NFT_SET_EXPR);
+
+    uint32_t set_flags = NFT_SET_TIMEOUT | NFT_SET_EXPR;
+    if (concat_field_lens && concat_field_bytes > 0)
+        set_flags |= NFT_SET_CONCAT;
+    nftnl_set_set_u32(s.get(), NFTNL_SET_FLAGS, set_flags);
     nftnl_set_set_u32(s.get(), NFTNL_SET_ID, set_id);
 
-    if (concat_field_lens && concat_field_count > 0) {
+    if (concat_field_lens && concat_field_bytes > 0) {
         nftnl_set_set_data(s.get(), NFTNL_SET_DESC_CONCAT,
-                           concat_field_lens, concat_field_count);
+                           concat_field_lens, concat_field_bytes);
     }
 
     // Per-element counter expression
@@ -276,9 +280,9 @@ NlResult CreateTableOp::execute(NlSocket& sock) {
     // Sets
     for (const auto& sd : cfg_->sets) {
         uint32_t key_type_v4, key_type_v6, key_len_v4, key_len_v6;
-        const uint8_t* concat_fields = nullptr;
-        size_t concat_count = 0;
-        static constexpr uint8_t proto_port_fields[2] = {1, 2};
+        const uint32_t* concat_fields = nullptr;
+        size_t concat_bytes = 0;
+        static constexpr uint32_t proto_port_fields[2] = {1, 2};
 
         if (sd.kind == SetKind::OutPort) {
             key_type_v4 = DATATYPE_PROTO_SERVICE;
@@ -286,7 +290,7 @@ NlResult CreateTableOp::execute(NlSocket& sock) {
             key_len_v4 = PROTO_SERVICE_KEY_LEN;
             key_len_v6 = PROTO_SERVICE_KEY_LEN;
             concat_fields = proto_port_fields;
-            concat_count = sizeof(proto_port_fields);
+            concat_bytes = sizeof(proto_port_fields);
         } else {
             key_type_v4 = DATATYPE_IPADDR;
             key_type_v6 = DATATYPE_IP6ADDR;
@@ -294,9 +298,9 @@ NlResult CreateTableOp::execute(NlSocket& sock) {
             key_len_v6 = IPV6_ADDR_LEN;
         }
         if (!add_set(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), sd.name.c_str(),
-                     key_type_v4, key_len_v4, sid++, concat_fields, concat_count)
+                     key_type_v4, key_len_v4, sid++, concat_fields, concat_bytes)
             || !add_set(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), sd.name_v6.c_str(),
-                        key_type_v6, key_len_v6, sid++, concat_fields, concat_count))
+                        key_type_v6, key_len_v6, sid++, concat_fields, concat_bytes))
             return {false, "failed to build set '" + sd.name + "'"};
     }
 
