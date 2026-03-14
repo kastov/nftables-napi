@@ -26,7 +26,6 @@ NlBatch::NlBatch(size_t buf_size)
         return;
 
     seq_ = alloc_seq_block();
-    base_seq_ = seq_;
     nftnl_batch_begin(static_cast<char*>(mnl_nlmsg_batch_current(batch_)), seq_++);
     mnl_nlmsg_batch_next(batch_);
 }
@@ -57,8 +56,6 @@ bool NlBatch::advance() {
     return mnl_nlmsg_batch_next(batch_);
 }
 
-uint32_t NlBatch::base_seq() const { return base_seq_; }
-
 NlResult NlBatch::execute(NlSocket& sock, bool ignore_enoent) {
     if (!batch_)
         return {false, "batch not initialized"};
@@ -66,5 +63,5 @@ NlResult NlBatch::execute(NlSocket& sock, bool ignore_enoent) {
     nftnl_batch_end(static_cast<char*>(mnl_nlmsg_batch_current(batch_)), seq_++);
     mnl_nlmsg_batch_next(batch_);
 
-    return sock.send_batch(batch_, ignore_enoent, base_seq_);
+    return sock.send_batch(batch_, ignore_enoent);
 }

@@ -28,11 +28,9 @@ public:
     [[nodiscard]] struct nlmsghdr* add_msg(uint16_t type, uint16_t family, uint16_t flags);
     [[nodiscard]] bool advance();
     [[nodiscard]] NlResult execute(NlSocket& sock, bool ignore_enoent = false);
-    [[nodiscard]] uint32_t base_seq() const;
 
 private:
     std::unique_ptr<char[]> buf_;
     struct mnl_nlmsg_batch* batch_;
     uint32_t seq_;
-    uint32_t base_seq_ = 0;
 };

@@ -6,6 +6,7 @@ extern "C" {
 
 #include <cerrno>
 #include <cstring>
+#include <poll.h>
 #include <sys/socket.h>
 
 static constexpr size_t RECV_BUF_SIZE = 16384;
@@ -75,7 +76,7 @@ bool NlSocket::is_valid() const {
     return nl_ != nullptr;
 }
 
-NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent, uint32_t base_seq) {
+NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent) {
     ssize_t sent = mnl_socket_sendto(nl_,
                                      mnl_nlmsg_batch_head(batch),
                                      mnl_nlmsg_batch_size(batch));
@@ -93,20 +94,32 @@ NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent,
     int fd = mnl_socket_get_fd(nl_);
     char recv_buf[RECV_BUF_SIZE];
 
-    // First read: blocking (kernel response should arrive promptly)
+    // Read all kernel responses.
+    // First read is blocking (kernel must respond). Subsequent reads use
+    // poll() with a short timeout — responses arrive in microseconds but
+    // may span multiple socket buffers.
+    struct pollfd pfd{fd, POLLIN, 0};
+
     ssize_t ret = mnl_socket_recvfrom(nl_, recv_buf, sizeof(recv_buf));
     if (ret < 0)
         return {false, std::string("mnl_socket_recvfrom: ") + strerror(errno)};
-    while (ret > 0) {
-        int cb_ret = mnl_cb_run2(recv_buf, static_cast<size_t>(ret), base_seq, portid_,
+
+    for (;;) {
+        int cb_ret = mnl_cb_run2(recv_buf, static_cast<size_t>(ret), 0, portid_,
                                   nullptr, &ctx, cb_ctl, NLMSG_ERROR + 1);
         if (cb_ret <= 0)
             break;
 
-        // Non-blocking read for remaining kernel responses
+        // Wait up to 50ms for more data
+        if (poll(&pfd, 1, 50) <= 0)
+            break;
+
         do {
             ret = recv(fd, recv_buf, sizeof(recv_buf), MSG_DONTWAIT);
         } while (ret < 0 && errno == EINTR);
+
+        if (ret <= 0)
+            break;
     }
 
     // Drain any leftover messages to keep socket clean for next operation

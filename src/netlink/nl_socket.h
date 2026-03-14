@@ -20,7 +20,7 @@ public:
 
     [[nodiscard]] bool is_valid() const;
 
-    [[nodiscard]] NlResult send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent = false, uint32_t base_seq = 0);
+    [[nodiscard]] NlResult send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent = false);
 
 private:
     struct mnl_socket* nl_;

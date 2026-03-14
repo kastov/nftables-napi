@@ -193,6 +193,7 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
     it('should accept addAddress with outSet name', () => {
         // Should not throw synchronously (would fail asynchronously without table)
         const p = nft.addAddress({ ip: '1.2.3.4', set: 'blocked_ips', timeout: 60 });
+        p.catch(() => {}); // suppress async rejection (no table created)
         assert.ok(p instanceof Promise);
     });
 
@@ -320,11 +321,13 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
     // Port 0 should be valid
     it('should accept port 0', () => {
         const p = nft.addPort({ port: 0, set: 'blocked_ports' });
+        p.catch(() => {});
         assert.ok(p instanceof Promise);
     });
 
     it('should accept port 65535', () => {
         const p = nft.addPort({ port: 65535, set: 'blocked_ports' });
+        p.catch(() => {});
         assert.ok(p instanceof Promise);
     });
 
@@ -339,11 +342,13 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
 
     it('should accept addPort with tcp protocol', () => {
         const p = nft.addPort({ port: 443, set: 'blocked_ports', protocol: 'tcp' });
+        p.catch(() => {});
         assert.ok(p instanceof Promise);
     });
 
     it('should accept addPort with udp protocol', () => {
         const p = nft.addPort({ port: 53, set: 'blocked_ports', protocol: 'udp' });
+        p.catch(() => {});
         assert.ok(p instanceof Promise);
     });
 });
