@@ -47,9 +47,11 @@ inline constexpr const char* CHAIN_OUTPUT = "output";
 inline constexpr uint32_t TRANSPORT_DPORT_OFFSET = 2;
 inline constexpr uint32_t TRANSPORT_DPORT_LEN = 2;
 
-// Concatenated type: inet_proto | (inet_service << TYPE_BITS)
-// TYPE_INET_PROTOCOL=12, TYPE_INET_SERVICE=13, TYPE_BITS=6
-inline constexpr uint32_t DATATYPE_PROTO_SERVICE = (12 | (13 << 6));
+// Concatenated type: concat_subtype_add(inet_proto, inet_service)
+// nft CLI builds concat types with LAST subtype in low bits:
+// concat_subtype_add(type, subtype) = type << TYPE_BITS | subtype
+// For (inet_proto=12 . inet_service=13): 12 << 6 | 13 = 781
+inline constexpr uint32_t DATATYPE_PROTO_SERVICE = (12 << 6 | 13);
 inline constexpr uint32_t PROTO_SERVICE_KEY_LEN = 8;
 
 // L4 protocol numbers
