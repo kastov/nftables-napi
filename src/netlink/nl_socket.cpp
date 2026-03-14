@@ -6,7 +6,7 @@ extern "C" {
 
 #include <cerrno>
 #include <cstring>
-#include <poll.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 
 static constexpr size_t RECV_BUF_SIZE = 16384;
@@ -85,49 +85,33 @@ NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent)
 
     BatchRecvCtx ctx{ignore_enoent, false, 0};
 
-    // Custom control callback array: override only NLMSG_ERROR (index 2).
-    // Array size = NLMSG_ERROR + 1 = 3, so NLMSG_DONE (3) and others
-    // fall through to default mnl handling.
     mnl_cb_t cb_ctl[NLMSG_ERROR + 1] = {};
     cb_ctl[NLMSG_ERROR] = batch_error_cb;
 
     int fd = mnl_socket_get_fd(nl_);
     char recv_buf[RECV_BUF_SIZE];
 
-    // Read all kernel responses.
-    // First read is blocking (kernel must respond). Subsequent reads use
-    // poll() with a short timeout — responses arrive in microseconds but
-    // may span multiple socket buffers.
-    struct pollfd pfd{fd, POLLIN, 0};
-
-    ssize_t ret = mnl_socket_recvfrom(nl_, recv_buf, sizeof(recv_buf));
-    if (ret < 0)
-        return {false, std::string("mnl_socket_recvfrom: ") + strerror(errno)};
+    // Match nft CLI pattern: select() with zero timeout to check for data,
+    // then recv+process in a loop. Continue on errors to collect all ACKs.
+    fd_set readfds;
+    struct timeval tv;
 
     for (;;) {
-        int cb_ret = mnl_cb_run2(recv_buf, static_cast<size_t>(ret), 0, portid_,
-                                  nullptr, &ctx, cb_ctl, NLMSG_ERROR + 1);
-        if (cb_ret <= 0)
+        FD_ZERO(&readfds);
+        FD_SET(fd, &readfds);
+        tv = {0, 0};
+
+        int sel = select(fd + 1, &readfds, nullptr, nullptr, &tv);
+        if (sel <= 0)
             break;
 
-        // Wait up to 50ms for more data
-        if (poll(&pfd, 1, 50) <= 0)
-            break;
+        ssize_t ret = mnl_socket_recvfrom(nl_, recv_buf, sizeof(recv_buf));
+        if (ret < 0)
+            return {false, std::string("mnl_socket_recvfrom: ") + strerror(errno)};
 
-        do {
-            ret = recv(fd, recv_buf, sizeof(recv_buf), MSG_DONTWAIT);
-        } while (ret < 0 && errno == EINTR);
-
-        if (ret <= 0)
-            break;
-    }
-
-    // Drain any leftover messages to keep socket clean for next operation
-    for (;;) {
-        ssize_t r = recv(fd, recv_buf, sizeof(recv_buf), MSG_DONTWAIT);
-        if (r > 0) continue;
-        if (r < 0 && errno == EINTR) continue;
-        break;
+        mnl_cb_run2(recv_buf, static_cast<size_t>(ret), 0, portid_,
+                     nullptr, &ctx, cb_ctl, NLMSG_ERROR + 1);
+        // Continue on error — collect all acknowledgments
     }
 
     if (ctx.has_error)
