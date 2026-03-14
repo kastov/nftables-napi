@@ -23,6 +23,10 @@ inline constexpr uint32_t IPV6_SRC_OFFSET = 8;
 inline constexpr uint32_t IPV4_ADDR_LEN = 4;
 inline constexpr uint32_t IPV6_ADDR_LEN = 16;
 
+// Destination address offsets
+inline constexpr uint32_t IPV4_DST_OFFSET = 16;
+inline constexpr uint32_t IPV6_DST_OFFSET = 24;
+
 // Chain priority
 inline constexpr int32_t CHAIN_PRIORITY = -10;
 
@@ -35,5 +39,24 @@ inline constexpr uint32_t SEQ_BLOCK_SIZE = 256;
 
 // Number of pages for default batch buffer (pagesize * 32 ≈ 128KB)
 inline constexpr uint32_t DEFAULT_BUF_PAGES = 32;
+
+// Output chain
+inline constexpr const char* CHAIN_OUTPUT = "output";
+
+// Transport header dport offset (bytes from transport header base)
+inline constexpr uint32_t TRANSPORT_DPORT_OFFSET = 2;
+inline constexpr uint32_t TRANSPORT_DPORT_LEN = 2;
+
+// Concatenated type: inet_proto | (inet_service << TYPE_BITS)
+// TYPE_INET_PROTOCOL=12, TYPE_INET_SERVICE=13, TYPE_BITS=6
+inline constexpr uint32_t DATATYPE_PROTO_SERVICE = (12 | (13 << 6));
+inline constexpr uint32_t PROTO_SERVICE_KEY_LEN = 8;
+
+// L4 protocol numbers
+inline constexpr uint8_t PROTO_TCP = 6;
+inline constexpr uint8_t PROTO_UDP = 17;
+
+// Named counter
+inline constexpr const char* COUNTER_NAME = "processed";
 
 } // namespace nft

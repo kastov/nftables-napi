@@ -18,4 +18,13 @@ struct IpAddr {
 
 // Parse IP string, validate via inet_pton, store binary form.
 // Returns IpAddr with family=Invalid on failure.
-IpAddr parse_ip(const std::string& ip);
+[[nodiscard]] IpAddr parse_ip(const std::string& ip);
+
+struct PortVal {
+    uint16_t port;
+    bool valid;
+};
+
+// Parse port number. Returns {port, valid=true} on success.
+// Valid range: 0-65535.
+[[nodiscard]] PortVal parse_port(double value);

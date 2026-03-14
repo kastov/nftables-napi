@@ -29,6 +29,10 @@ private:
     Napi::Value AddAddresses(const Napi::CallbackInfo& info);
     Napi::Value RemoveAddresses(const Napi::CallbackInfo& info);
     Napi::Value DeleteTable(const Napi::CallbackInfo& info);
+    Napi::Value AddPort(const Napi::CallbackInfo& info);
+    Napi::Value RemovePort(const Napi::CallbackInfo& info);
+    Napi::Value AddPorts(const Napi::CallbackInfo& info);
+    Napi::Value RemovePorts(const Napi::CallbackInfo& info);
 
     void Enqueue(std::unique_ptr<NlOperation> op, Napi::Promise::Deferred deferred);
     void DrainQueue();
@@ -41,4 +45,5 @@ private:
     std::shared_ptr<const nft::NftConfig> config_;
     std::queue<PendingOp> queue_;
     bool worker_active_ = false;
+    bool valid_ = false;
 };

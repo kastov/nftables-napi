@@ -1,6 +1,7 @@
 #include "validation.h"
 
 #include <arpa/inet.h>
+#include <cmath>
 #include <cstring>
 
 IpAddr parse_ip(const std::string& ip) {
@@ -23,4 +24,15 @@ IpAddr parse_ip(const std::string& ip) {
     }
 
     return result;
+}
+
+PortVal parse_port(double value) {
+    if (std::isnan(value) || value < 0.0 || value > 65535.0) {
+        return {0, false};
+    }
+    double truncated = std::trunc(value);
+    if (value != truncated) {
+        return {0, false};  // reject fractional ports
+    }
+    return {static_cast<uint16_t>(truncated), true};
 }
