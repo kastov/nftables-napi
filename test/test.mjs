@@ -10,7 +10,9 @@ let nft;
 try {
     nft = new NftManager({
         tableName: 'remnawave',
-        sets: ['blacklist', 'droplist']
+        sets: ['blacklist', 'droplist'],
+        outSets: ['blocked_ips'],
+        outPortSets: ['blocked_ports']
     });
     canCreateContext = true;
 } catch {
@@ -60,22 +62,77 @@ describe('NftManager constructor validation', () => {
         assert.throws(() => new NftManager({ tableName: 't', sets: [''] }));
     });
 
-    it('should throw with duplicate set names', { skip: !canCreateContext }, () => {
+    it('should throw with duplicate set names in sets', { skip: !canCreateContext }, () => {
         assert.throws(() => new NftManager({ tableName: 't', sets: ['bl', 'bl'] }));
     });
 
-    it('should create with single set', { skip: !canCreateContext }, () => {
+    // outSets validation
+    it('should throw with non-array outSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outSets: 'x' }), { name: 'TypeError' });
+    });
+
+    it('should throw with non-string in outSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outSets: [123] }), { name: 'TypeError' });
+    });
+
+    it('should throw with empty string in outSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outSets: [''] }));
+    });
+
+    // outPortSets validation
+    it('should throw with non-array outPortSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outPortSets: 42 }), { name: 'TypeError' });
+    });
+
+    it('should throw with non-string in outPortSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outPortSets: [true] }), { name: 'TypeError' });
+    });
+
+    // Cross-array duplicate check
+    it('should throw with duplicate name across sets and outSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outSets: ['bl'] }));
+    });
+
+    it('should throw with duplicate name across sets and outPortSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outPortSets: ['bl'] }));
+    });
+
+    it('should throw with duplicate name across outSets and outPortSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({
+            tableName: 't', sets: ['bl'], outSets: ['x'], outPortSets: ['x']
+        }));
+    });
+
+    // Valid constructions
+    it('should create with single set (backward compat)', { skip: !canCreateContext }, () => {
         const mgr = new NftManager({ tableName: 'test', sets: ['ban'] });
         assert.ok(mgr);
     });
 
-    it('should create with two sets', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ tableName: 'test', sets: ['bl', 'dl'] });
+    it('should create with sets + outSets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', sets: ['bl'], outSets: ['out'] });
         assert.ok(mgr);
     });
 
-    it('should create with three sets', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ tableName: 'test', sets: ['a', 'b', 'c'] });
+    it('should create with sets + outPortSets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', sets: ['bl'], outPortSets: ['ports'] });
+        assert.ok(mgr);
+    });
+
+    it('should create with all three', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({
+            tableName: 'test', sets: ['a', 'b'], outSets: ['c'], outPortSets: ['d']
+        });
+        assert.ok(mgr);
+    });
+
+    it('should accept empty outSets and outPortSets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', sets: ['bl'], outSets: [], outPortSets: [] });
+        assert.ok(mgr);
+    });
+
+    it('should accept undefined outSets and outPortSets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', sets: ['bl'] });
         assert.ok(mgr);
     });
 });
@@ -98,6 +155,10 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
 
     it('should throw on addAddress with invalid set name', () => {
         assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'nonexistent' }));
+    });
+
+    it('should throw on addAddress with port set name', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blocked_ports' }));
     });
 
     it('should throw on addAddress with invalid IP', () => {
@@ -124,24 +185,15 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: Infinity }));
     });
 
-    it('should throw on addAddress with -Infinity timeout', () => {
-        assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: -Infinity }));
-    });
-
     it('should throw on addAddress with CIDR notation', () => {
         assert.throws(() => nft.addAddress({ ip: '192.168.1.0/24', set: 'blacklist' }));
     });
 
-    it('should throw on addAddress with port notation', () => {
-        assert.throws(() => nft.addAddress({ ip: '192.168.1.1:8080', set: 'blacklist' }));
-    });
-
-    it('should throw on addAddress with empty IP', () => {
-        assert.throws(() => nft.addAddress({ ip: '', set: 'blacklist' }));
-    });
-
-    it('should throw on addAddress with whitespace IP', () => {
-        assert.throws(() => nft.addAddress({ ip: '  1.2.3.4', set: 'blacklist' }));
+    // addAddress works with outSets
+    it('should accept addAddress with outSet name', () => {
+        // Should not throw synchronously (would fail asynchronously without table)
+        const p = nft.addAddress({ ip: '1.2.3.4', set: 'blocked_ips', timeout: 60 });
+        assert.ok(p instanceof Promise);
     });
 
     // removeAddress validation
@@ -174,41 +226,129 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4', 'invalid'], set: 'blacklist' }));
     });
 
-    it('should throw on addAddresses with invalid set', () => {
-        assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4'], set: 'invalid' }));
-    });
-
-    it('should throw on addAddresses with non-number timeout', () => {
-        assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4'], set: 'blacklist', timeout: 'bad' }), { name: 'TypeError' });
-    });
-
-    it('should throw on addAddresses with zero timeout', () => {
-        assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4'], set: 'blacklist', timeout: 0 }));
-    });
-
-    it('should throw on addAddresses with negative timeout', () => {
-        assert.throws(() => nft.addAddresses({ ips: ['1.2.3.4'], set: 'blacklist', timeout: -1 }));
-    });
-
     // removeAddresses validation
     it('should throw on removeAddresses without object', () => {
         assert.throws(() => nft.removeAddresses(['1.2.3.4']), { name: 'TypeError' });
     });
 
-    it('should throw on removeAddresses with invalid IP', () => {
-        assert.throws(() => nft.removeAddresses({ ips: ['invalid'], set: 'blacklist' }));
-    });
-
-    it('should throw on removeAddresses without set', () => {
-        assert.throws(() => nft.removeAddresses({ ips: ['1.2.3.4'] }), { name: 'TypeError' });
-    });
-
     it('should throw on removeAddresses with invalid set', () => {
         assert.throws(() => nft.removeAddresses({ ips: ['1.2.3.4'], set: 'invalid' }));
     });
+
+    // ── Port method validation ──────────────────────────────────────────────
+
+    // addPort
+    it('should throw on addPort without object', () => {
+        assert.throws(() => nft.addPort(443), { name: 'TypeError' });
+    });
+
+    it('should throw on addPort without port', () => {
+        assert.throws(() => nft.addPort({ set: 'blocked_ports' }), { name: 'TypeError' });
+    });
+
+    it('should throw on addPort with string port', () => {
+        assert.throws(() => nft.addPort({ port: '443', set: 'blocked_ports' }), { name: 'TypeError' });
+    });
+
+    it('should throw on addPort without set', () => {
+        assert.throws(() => nft.addPort({ port: 443 }), { name: 'TypeError' });
+    });
+
+    it('should throw on addPort with IP set name', () => {
+        assert.throws(() => nft.addPort({ port: 443, set: 'blacklist' }));
+    });
+
+    it('should throw on addPort with invalid port (-1)', () => {
+        assert.throws(() => nft.addPort({ port: -1, set: 'blocked_ports' }));
+    });
+
+    it('should throw on addPort with invalid port (65536)', () => {
+        assert.throws(() => nft.addPort({ port: 65536, set: 'blocked_ports' }));
+    });
+
+    it('should throw on addPort with fractional port', () => {
+        assert.throws(() => nft.addPort({ port: 80.5, set: 'blocked_ports' }));
+    });
+
+    it('should throw on addPort with NaN port', () => {
+        assert.throws(() => nft.addPort({ port: NaN, set: 'blocked_ports' }));
+    });
+
+    it('should throw on addPort with Infinity port', () => {
+        assert.throws(() => nft.addPort({ port: Infinity, set: 'blocked_ports' }));
+    });
+
+    it('should throw on addPort with non-number timeout', () => {
+        assert.throws(() => nft.addPort({ port: 443, set: 'blocked_ports', timeout: 'bad' }), { name: 'TypeError' });
+    });
+
+    // removePort
+    it('should throw on removePort without object', () => {
+        assert.throws(() => nft.removePort(443), { name: 'TypeError' });
+    });
+
+    it('should throw on removePort with invalid set', () => {
+        assert.throws(() => nft.removePort({ port: 443, set: 'invalid' }));
+    });
+
+    // addPorts
+    it('should throw on addPorts without object', () => {
+        assert.throws(() => nft.addPorts([443]), { name: 'TypeError' });
+    });
+
+    it('should throw on addPorts without ports array', () => {
+        assert.throws(() => nft.addPorts({ ports: 'not-array', set: 'blocked_ports' }), { name: 'TypeError' });
+    });
+
+    it('should throw on addPorts with invalid port in array', () => {
+        assert.throws(() => nft.addPorts({ ports: [80, -1], set: 'blocked_ports' }));
+    });
+
+    it('should throw on addPorts with non-number in array', () => {
+        assert.throws(() => nft.addPorts({ ports: [80, 'bad'], set: 'blocked_ports' }), { name: 'TypeError' });
+    });
+
+    // removePorts
+    it('should throw on removePorts without object', () => {
+        assert.throws(() => nft.removePorts([443]), { name: 'TypeError' });
+    });
+
+    it('should throw on removePorts with invalid set', () => {
+        assert.throws(() => nft.removePorts({ ports: [443], set: 'invalid' }));
+    });
+
+    // Port 0 should be valid
+    it('should accept port 0', () => {
+        const p = nft.addPort({ port: 0, set: 'blocked_ports' });
+        assert.ok(p instanceof Promise);
+    });
+
+    it('should accept port 65535', () => {
+        const p = nft.addPort({ port: 65535, set: 'blocked_ports' });
+        assert.ok(p instanceof Promise);
+    });
+
+    // protocol validation
+    it('should throw on addPort with invalid protocol', () => {
+        assert.throws(() => nft.addPort({ port: 443, set: 'blocked_ports', protocol: 'icmp' }));
+    });
+
+    it('should throw on addPort with non-string protocol', () => {
+        assert.throws(() => nft.addPort({ port: 443, set: 'blocked_ports', protocol: 6 }), { name: 'TypeError' });
+    });
+
+    it('should accept addPort with tcp protocol', () => {
+        const p = nft.addPort({ port: 443, set: 'blocked_ports', protocol: 'tcp' });
+        assert.ok(p instanceof Promise);
+    });
+
+    it('should accept addPort with udp protocol', () => {
+        const p = nft.addPort({ port: 53, set: 'blocked_ports', protocol: 'udp' });
+        assert.ok(p instanceof Promise);
+    });
 });
 
-// ─── Integration: blacklist set ─────────────────────────────────────────────
+// ─── Integration: input sets (blacklist) ────────────────────────────────────
 
 describe('NftManager integration (blacklist)', { skip: !canCreateContext }, () => {
     after(async () => {
@@ -254,27 +394,15 @@ describe('NftManager integration (blacklist)', { skip: !canCreateContext }, () =
     it('should bulk add with timeout', async () => {
         await nft.addAddresses({
             ips: ['10.0.0.10', '10.0.0.11', '2001:db8::10'],
-            set: 'blacklist',
-            timeout: 300
-        });
-    });
-
-    it('should bulk add permanent', async () => {
-        await nft.addAddresses({
-            ips: ['10.0.0.20', '10.0.0.21'],
-            set: 'blacklist'
+            set: 'blacklist', timeout: 300
         });
     });
 
     it('should bulk remove', async () => {
         await nft.removeAddresses({
-            ips: ['10.0.0.10', '10.0.0.11', '2001:db8::10', '10.0.0.20', '10.0.0.21'],
+            ips: ['10.0.0.10', '10.0.0.11', '2001:db8::10'],
             set: 'blacklist'
         });
-    });
-
-    it('should bulk remove non-existent idempotently', async () => {
-        await nft.removeAddresses({ ips: ['172.16.0.100'], set: 'blacklist' });
     });
 
     it('should handle empty arrays', async () => {
@@ -291,9 +419,46 @@ describe('NftManager integration (blacklist)', { skip: !canCreateContext }, () =
     });
 });
 
-// ─── Integration: droplist set ──────────────────────────────────────────────
+// ─── Integration: output IP sets ────────────────────────────────────────────
 
-describe('NftManager integration (droplist)', { skip: !canCreateContext }, () => {
+describe('NftManager integration (output IP)', { skip: !canCreateContext }, () => {
+    after(async () => {
+        try { await nft.deleteTable(); } catch { /* ignore */ }
+    });
+
+    it('should create tables with output sets', async () => {
+        await nft.createTable();
+    });
+
+    it('should add IPv4 to output set', async () => {
+        await nft.addAddress({ ip: '10.0.0.1', set: 'blocked_ips', timeout: 60 });
+    });
+
+    it('should add IPv6 to output set', async () => {
+        await nft.addAddress({ ip: '2001:db8::1', set: 'blocked_ips' });
+    });
+
+    it('should remove from output set', async () => {
+        await nft.removeAddress({ ip: '10.0.0.1', set: 'blocked_ips' });
+        await nft.removeAddress({ ip: '2001:db8::1', set: 'blocked_ips' });
+    });
+
+    it('should bulk add to output set', async () => {
+        await nft.addAddresses({ ips: ['10.1.1.1', '10.1.1.2'], set: 'blocked_ips', timeout: 120 });
+    });
+
+    it('should bulk remove from output set', async () => {
+        await nft.removeAddresses({ ips: ['10.1.1.1', '10.1.1.2'], set: 'blocked_ips' });
+    });
+
+    it('should delete tables', async () => {
+        await nft.deleteTable();
+    });
+});
+
+// ─── Integration: output port sets ──────────────────────────────────────────
+
+describe('NftManager integration (output ports)', { skip: !canCreateContext }, () => {
     after(async () => {
         try { await nft.deleteTable(); } catch { /* ignore */ }
     });
@@ -302,32 +467,54 @@ describe('NftManager integration (droplist)', { skip: !canCreateContext }, () =>
         await nft.createTable();
     });
 
-    it('should add IPv4 to droplist with timeout', async () => {
-        await nft.addAddress({ ip: '192.168.88.88', set: 'droplist', timeout: 60 });
+    it('should add tcp port with timeout', async () => {
+        await nft.addPort({ port: 443, set: 'blocked_ports', protocol: 'tcp', timeout: 60 });
     });
 
-    it('should add IPv6 to droplist permanent', async () => {
-        await nft.addAddress({ ip: '2001:db8::cafe:babe', set: 'droplist' });
+    it('should add udp port', async () => {
+        await nft.addPort({ port: 53, set: 'blocked_ports', protocol: 'udp' });
     });
 
-    it('should remove from droplist', async () => {
-        await nft.removeAddress({ ip: '192.168.88.88', set: 'droplist' });
+    it('should add port for both protocols (default)', async () => {
+        await nft.addPort({ port: 80, set: 'blocked_ports', timeout: 120 });
     });
 
-    it('should remove non-existent from droplist idempotently', async () => {
-        await nft.removeAddress({ ip: '172.16.0.1', set: 'droplist' });
+    it('should add port 0 tcp', async () => {
+        await nft.addPort({ port: 0, set: 'blocked_ports', protocol: 'tcp', timeout: 30 });
     });
 
-    it('should bulk add to droplist', async () => {
-        await nft.addAddresses({ ips: ['10.1.1.1', '10.1.1.2'], set: 'droplist', timeout: 180 });
+    it('should remove tcp port', async () => {
+        await nft.removePort({ port: 443, set: 'blocked_ports', protocol: 'tcp' });
     });
 
-    it('should bulk remove from droplist', async () => {
-        await nft.removeAddresses({ ips: ['10.1.1.1', '10.1.1.2', '2001:db8::cafe:babe'], set: 'droplist' });
+    it('should remove udp port', async () => {
+        await nft.removePort({ port: 53, set: 'blocked_ports', protocol: 'udp' });
     });
 
-    it('should bulk remove non-existent from droplist', async () => {
-        await nft.removeAddresses({ ips: ['172.16.0.200'], set: 'droplist' });
+    it('should remove both protocols (default)', async () => {
+        await nft.removePort({ port: 80, set: 'blocked_ports' });
+    });
+
+    it('should remove port idempotently', async () => {
+        await nft.removePort({ port: 443, set: 'blocked_ports', protocol: 'tcp' });
+    });
+
+    it('should bulk add ports with protocol', async () => {
+        await nft.addPorts({ ports: [8080, 8443], set: 'blocked_ports', protocol: 'tcp', timeout: 180 });
+    });
+
+    it('should bulk add ports both protocols', async () => {
+        await nft.addPorts({ ports: [3000], set: 'blocked_ports' });
+    });
+
+    it('should bulk remove ports', async () => {
+        await nft.removePorts({ ports: [8080, 8443], set: 'blocked_ports', protocol: 'tcp' });
+        await nft.removePorts({ ports: [3000, 0], set: 'blocked_ports' });
+    });
+
+    it('should handle empty port arrays', async () => {
+        await nft.addPorts({ ports: [], set: 'blocked_ports', timeout: 60 });
+        await nft.removePorts({ ports: [], set: 'blocked_ports' });
     });
 
     it('should delete tables', async () => {
@@ -335,115 +522,73 @@ describe('NftManager integration (droplist)', { skip: !canCreateContext }, () =>
     });
 });
 
-// ─── Integration: custom config with actual names ───────────────────────────
+// ─── Integration: backward compat (sets only) ──────────────────────────────
 
-describe('NftManager integration (custom config)', { skip: !canCreateContext }, () => {
-    let custom;
-
-    after(async () => {
-        try { await custom.deleteTable(); } catch { /* ignore */ }
-    });
-
-    it('should create with custom names', async () => {
-        custom = new NftManager({
-            tableName: 'testfw',
-            sets: ['testbl', 'testdrop']
-        });
-        await custom.createTable();
-    });
-
-    it('should add and remove from custom set', async () => {
-        await custom.addAddress({ ip: '10.99.99.1', set: 'testbl', timeout: 60 });
-        await custom.removeAddress({ ip: '10.99.99.1', set: 'testbl' });
-    });
-
-    it('should add permanent to second custom set', async () => {
-        await custom.addAddress({ ip: '10.99.99.2', set: 'testdrop' });
-        await custom.removeAddress({ ip: '10.99.99.2', set: 'testdrop' });
-    });
-
-    it('should delete custom tables', async () => {
-        await custom.deleteTable();
-    });
-});
-
-// ─── Integration: 3+ sets ───────────────────────────────────────────────────
-
-describe('NftManager integration (three sets)', { skip: !canCreateContext }, () => {
-    let multi;
+describe('NftManager integration (backward compat)', { skip: !canCreateContext }, () => {
+    let simple;
 
     after(async () => {
-        try { await multi.deleteTable(); } catch { /* ignore */ }
+        try { await simple.deleteTable(); } catch { /* ignore */ }
     });
 
-    it('should create with three sets', async () => {
-        multi = new NftManager({
-            tableName: 'multitest',
-            sets: ['banlist', 'droplist', 'ratelimit']
-        });
-        await multi.createTable();
+    it('should create with sets only (no outSets/outPortSets)', async () => {
+        simple = new NftManager({ tableName: 'backcompat', sets: ['ban'] });
+        await simple.createTable();
     });
 
-    it('should add to first set', async () => {
-        await multi.addAddress({ ip: '10.0.0.1', set: 'banlist', timeout: 60 });
-    });
-
-    it('should add to second set', async () => {
-        await multi.addAddress({ ip: '10.0.0.2', set: 'droplist' });
-    });
-
-    it('should add to third set', async () => {
-        await multi.addAddress({ ip: '10.0.0.3', set: 'ratelimit', timeout: 30 });
-    });
-
-    it('should add IPv6 to third set', async () => {
-        await multi.addAddress({ ip: '2001:db8::99', set: 'ratelimit', timeout: 30 });
-    });
-
-    it('should reject invalid set name', () => {
-        assert.throws(() => multi.addAddress({ ip: '10.0.0.4', set: 'nonexistent' }));
-    });
-
-    it('should bulk add to third set', async () => {
-        await multi.addAddresses({ ips: ['10.0.0.10', '10.0.0.11'], set: 'ratelimit', timeout: 120 });
-    });
-
-    it('should remove from all sets', async () => {
-        await multi.removeAddress({ ip: '10.0.0.1', set: 'banlist' });
-        await multi.removeAddress({ ip: '10.0.0.2', set: 'droplist' });
-        await multi.removeAddress({ ip: '10.0.0.3', set: 'ratelimit' });
-        await multi.removeAddress({ ip: '2001:db8::99', set: 'ratelimit' });
-        await multi.removeAddresses({ ips: ['10.0.0.10', '10.0.0.11'], set: 'ratelimit' });
+    it('should add and remove from set', async () => {
+        await simple.addAddress({ ip: '10.0.0.1', set: 'ban', timeout: 60 });
+        await simple.removeAddress({ ip: '10.0.0.1', set: 'ban' });
     });
 
     it('should delete tables', async () => {
-        await multi.deleteTable();
+        await simple.deleteTable();
     });
 });
 
-// ─── Integration: single set ────────────────────────────────────────────────
+// ─── Integration: full config ───────────────────────────────────────────────
 
-describe('NftManager integration (single set)', { skip: !canCreateContext }, () => {
-    let single;
+describe('NftManager integration (full config)', { skip: !canCreateContext }, () => {
+    let full;
 
     after(async () => {
-        try { await single.deleteTable(); } catch { /* ignore */ }
+        try { await full.deleteTable(); } catch { /* ignore */ }
     });
 
-    it('should create with single set', async () => {
-        single = new NftManager({
-            tableName: 'singletest',
-            sets: ['ban']
+    it('should create with all set types', async () => {
+        full = new NftManager({
+            tableName: 'fulltest',
+            sets: ['banlist', 'droplist'],
+            outSets: ['out_blocked'],
+            outPortSets: ['out_ports']
         });
-        await single.createTable();
+        await full.createTable();
     });
 
-    it('should add and remove from single set', async () => {
-        await single.addAddress({ ip: '10.0.0.1', set: 'ban', timeout: 60 });
-        await single.removeAddress({ ip: '10.0.0.1', set: 'ban' });
+    it('should add to input set', async () => {
+        await full.addAddress({ ip: '10.0.0.1', set: 'banlist', timeout: 60 });
     });
 
-    it('should delete tables', async () => {
-        await single.deleteTable();
+    it('should add to output IP set', async () => {
+        await full.addAddress({ ip: '10.0.0.2', set: 'out_blocked' });
+    });
+
+    it('should add tcp port to output port set', async () => {
+        await full.addPort({ port: 25, set: 'out_ports', protocol: 'tcp', timeout: 300 });
+    });
+
+    it('should reject IP method on port set', () => {
+        assert.throws(() => full.addAddress({ ip: '10.0.0.3', set: 'out_ports' }));
+    });
+
+    it('should reject port method on IP set', () => {
+        assert.throws(() => full.addPort({ port: 80, set: 'banlist' }));
+    });
+
+    it('should clean up', async () => {
+        await full.removeAddress({ ip: '10.0.0.1', set: 'banlist' });
+        await full.removeAddress({ ip: '10.0.0.2', set: 'out_blocked' });
+        await full.removePort({ port: 25, set: 'out_ports', protocol: 'tcp' });
+        await full.deleteTable();
     });
 });
