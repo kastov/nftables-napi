@@ -1,6 +1,6 @@
 {
   "name": "nftables-napi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Native Node.js binding for nftables via libnftnl+libmnl — nftables firewall management",
   "author": {
     "name": "kastov",
@@ -45,7 +45,6 @@
     "binding.gyp"
   ],
   "gypfile": true,
-  "os": ["linux"],
   "engines": {
     "node": ">=24.0.0"
   },

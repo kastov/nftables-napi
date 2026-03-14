@@ -11,14 +11,24 @@ let nft = null;
 
 function printMenu() {
   console.log('');
-  console.log('  1) Create NftManager');
-  console.log('  2) createTable');
-  console.log('  3) addAddress');
-  console.log('  4) removeAddress');
-  console.log('  5) addAddresses');
-  console.log('  6) removeAddresses');
-  console.log('  7) deleteTable');
-  console.log('  0) Exit');
+  console.log('  === Table ===');
+  console.log('  1)  Create NftManager');
+  console.log('  2)  createTable');
+  console.log('  3)  deleteTable');
+  console.log('');
+  console.log('  === Addresses (sets / outSets) ===');
+  console.log('  4)  addAddress');
+  console.log('  5)  removeAddress');
+  console.log('  6)  addAddresses');
+  console.log('  7)  removeAddresses');
+  console.log('');
+  console.log('  === Ports (outPortSets) ===');
+  console.log('  8)  addPort');
+  console.log('  9)  removePort');
+  console.log('  10) addPorts');
+  console.log('  11) removePorts');
+  console.log('');
+  console.log('  0)  Exit');
   console.log('');
 }
 
@@ -30,6 +40,10 @@ async function askSet() {
   return await prompt('  set name: ');
 }
 
+async function askPortSet() {
+  return await prompt('  port set name: ');
+}
+
 async function askTimeout() {
   const raw = await prompt('  timeout in seconds (empty = permanent): ');
   if (!raw) return undefined;
@@ -38,12 +52,33 @@ async function askTimeout() {
   return n;
 }
 
+async function askProtocol() {
+  const raw = await prompt('  protocol (tcp / udp / empty = both): ');
+  if (!raw) return undefined;
+  if (raw !== 'tcp' && raw !== 'udp') throw new Error(`Invalid protocol: ${raw} (expected tcp or udp)`);
+  return raw;
+}
+
 async function createManager() {
   const tableName = await prompt('  tableName [remnawave]: ') || 'remnawave';
-  const setsRaw = await prompt('  sets (comma-separated) [blacklist,droplist]: ') || 'blacklist,droplist';
+
+  const setsRaw = await prompt('  sets (comma-separated) [blacklist]: ') || 'blacklist';
   const sets = setsRaw.split(',').map(s => s.trim()).filter(Boolean);
-  nft = new NftManager({ tableName, sets });
-  console.log(`  -> NftManager created (table=${tableName}, sets=[${sets.join(', ')}])`);
+
+  const outSetsRaw = await prompt('  outSets (comma-separated, empty = none): ');
+  const outSets = outSetsRaw ? outSetsRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+
+  const outPortSetsRaw = await prompt('  outPortSets (comma-separated, empty = none): ');
+  const outPortSets = outPortSetsRaw ? outPortSetsRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+
+  const opts = { tableName, sets };
+  if (outSets) opts.outSets = outSets;
+  if (outPortSets) opts.outPortSets = outPortSets;
+
+  nft = new NftManager(opts);
+  console.log(`  -> NftManager created (table=${tableName}, sets=[${sets}]` +
+    (outSets ? `, outSets=[${outSets}]` : '') +
+    (outPortSets ? `, outPortSets=[${outPortSets}]` : '') + ')');
 }
 
 async function run(fn) {
@@ -73,11 +108,18 @@ async function main() {
       case '2':
         await run(async () => {
           await nft.createTable();
-          console.log('  -> done');
+          console.log('  -> table created');
         });
         break;
 
       case '3':
+        await run(async () => {
+          await nft.deleteTable();
+          console.log('  -> table deleted');
+        });
+        break;
+
+      case '4':
         await run(async () => {
           const ip = await prompt('  ip: ');
           const set = await askSet();
@@ -87,7 +129,7 @@ async function main() {
         });
         break;
 
-      case '4':
+      case '5':
         await run(async () => {
           const ip = await prompt('  ip: ');
           const set = await askSet();
@@ -96,7 +138,7 @@ async function main() {
         });
         break;
 
-      case '5':
+      case '6':
         await run(async () => {
           const raw = await prompt('  ips (comma-separated): ');
           const ips = raw.split(',').map(s => s.trim()).filter(Boolean);
@@ -107,7 +149,7 @@ async function main() {
         });
         break;
 
-      case '6':
+      case '7':
         await run(async () => {
           const raw = await prompt('  ips (comma-separated): ');
           const ips = raw.split(',').map(s => s.trim()).filter(Boolean);
@@ -117,10 +159,47 @@ async function main() {
         });
         break;
 
-      case '7':
+      case '8':
         await run(async () => {
-          await nft.deleteTable();
-          console.log('  -> done');
+          const port = Number(await prompt('  port: '));
+          const set = await askPortSet();
+          const protocol = await askProtocol();
+          const timeout = await askTimeout();
+          await nft.addPort({ port, set, protocol, timeout });
+          console.log(`  -> added port ${port} to ${set} (proto=${protocol || 'both'}${timeout ? `, ${timeout}s` : ', permanent'})`);
+        });
+        break;
+
+      case '9':
+        await run(async () => {
+          const port = Number(await prompt('  port: '));
+          const set = await askPortSet();
+          const protocol = await askProtocol();
+          await nft.removePort({ port, set, protocol });
+          console.log(`  -> removed port ${port} from ${set} (proto=${protocol || 'both'})`);
+        });
+        break;
+
+      case '10':
+        await run(async () => {
+          const raw = await prompt('  ports (comma-separated): ');
+          const ports = raw.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n));
+          const set = await askPortSet();
+          const protocol = await askProtocol();
+          const timeout = await askTimeout();
+          await nft.addPorts({ ports, set, protocol, timeout });
+          console.log(`  -> added ${ports.length} port(s) to ${set}`);
+        });
+        break;
+
+      case '11':
+        await run(async () => {
+          const raw = await prompt('  ports (comma-separated): ');
+          const ports = raw.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n));
+          const set = await askPortSet();
+          const protocol = await askProtocol();
+          await nft.removePorts({ ports, set, protocol });
+          console.log(`  -> removed ${ports.length} port(s) from ${set}`);
         });
         break;
 
