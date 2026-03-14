@@ -1,7 +1,7 @@
 {
   "targets": [
     {
-      "target_name": "remnawave_nft",
+      "target_name": "nftables_napi",
       "sources": [
         "src/addon.cpp",
         "src/nft_manager.cpp",

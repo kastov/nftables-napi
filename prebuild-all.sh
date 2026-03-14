@@ -34,5 +34,5 @@ echo "==> Done! Prebuilds:"
 find prebuilds -type f
 echo ""
 echo "Structure should look like:"
-echo "  prebuilds/linux-x64/remnawave_nft.node"
-echo "  prebuilds/linux-arm64/remnawave_nft.node"
+echo "  prebuilds/linux-x64/nftables_napi.node"
+echo "  prebuilds/linux-arm64/nftables_napi.node"
