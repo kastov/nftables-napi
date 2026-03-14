@@ -45,9 +45,9 @@
     "binding.gyp"
   ],
   "gypfile": true,
+  "os": ["linux"],
   "engines": {
-    "node": ">=24.0.0",
-    "os": "linux"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "install": "node-gyp-build || true",
@@ -57,10 +57,10 @@
     "prebuild:all": "./prebuild-all.sh"
   },
   "dependencies": {
-    "node-gyp-build": "^4.8.4",
-    "node-addon-api": "^8.5.0"
+    "node-gyp-build": "^4.8.4"
   },
   "devDependencies": {
+    "node-addon-api": "^8.5.0",
     "node-gyp": "^12.2.0",
     "prebuildify": "^6.0.1",
     "@types/node": ">= 24 < 25"

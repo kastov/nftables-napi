@@ -7,5 +7,5 @@ class NlSocket;
 class NlOperation {
 public:
     virtual ~NlOperation() = default;
-    virtual NlResult execute(NlSocket& sock) = 0;
+    [[nodiscard]] virtual NlResult execute(NlSocket& sock) = 0;
 };

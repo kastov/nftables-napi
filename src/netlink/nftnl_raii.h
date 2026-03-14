@@ -24,6 +24,7 @@ extern "C" {
 #include <libnftnl/chain.h>
 #include <libnftnl/set.h>
 #include <libnftnl/rule.h>
+#include <libnftnl/object.h>
 }
 
 #include <memory>
@@ -37,7 +38,7 @@ struct NftnlTableDeleter {
 };
 using UniqueTable = std::unique_ptr<struct nftnl_table, NftnlTableDeleter>;
 
-inline UniqueTable make_table() { return UniqueTable(nftnl_table_alloc()); }
+[[nodiscard]] inline UniqueTable make_table() { return UniqueTable(nftnl_table_alloc()); }
 
 // --- Chain -------------------------------------------------------------------
 
@@ -46,7 +47,7 @@ struct NftnlChainDeleter {
 };
 using UniqueChain = std::unique_ptr<struct nftnl_chain, NftnlChainDeleter>;
 
-inline UniqueChain make_chain() { return UniqueChain(nftnl_chain_alloc()); }
+[[nodiscard]] inline UniqueChain make_chain() { return UniqueChain(nftnl_chain_alloc()); }
 
 // --- Set ---------------------------------------------------------------------
 
@@ -55,7 +56,7 @@ struct NftnlSetDeleter {
 };
 using UniqueSet = std::unique_ptr<struct nftnl_set, NftnlSetDeleter>;
 
-inline UniqueSet make_set() { return UniqueSet(nftnl_set_alloc()); }
+[[nodiscard]] inline UniqueSet make_set() { return UniqueSet(nftnl_set_alloc()); }
 
 // --- Rule --------------------------------------------------------------------
 
@@ -64,6 +65,15 @@ struct NftnlRuleDeleter {
 };
 using UniqueRule = std::unique_ptr<struct nftnl_rule, NftnlRuleDeleter>;
 
-inline UniqueRule make_rule() { return UniqueRule(nftnl_rule_alloc()); }
+[[nodiscard]] inline UniqueRule make_rule() { return UniqueRule(nftnl_rule_alloc()); }
+
+// --- Object (stateful counter/quota) ----------------------------------------
+
+struct NftnlObjDeleter {
+    void operator()(struct nftnl_obj* o) const noexcept { nftnl_obj_free(o); }
+};
+using UniqueObj = std::unique_ptr<struct nftnl_obj, NftnlObjDeleter>;
+
+[[nodiscard]] inline UniqueObj make_obj() { return UniqueObj(nftnl_obj_alloc()); }
 
 } // namespace nft

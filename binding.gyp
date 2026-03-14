@@ -28,7 +28,9 @@
         "-Wall",
         "-Wextra",
         "-Wpedantic",
-        "-Wno-unused-parameter"
+        "-Wno-unused-parameter",
+        "-D_FORTIFY_SOURCE=2",
+        "-fstack-protector-strong"
       ],
       "ldflags": [
         "-Wl,-z,relro",

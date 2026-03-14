@@ -2,7 +2,7 @@
 
 #include <string>
 
-struct NlResult {
+struct [[nodiscard]] NlResult {
     bool success;
     std::string error;
 };

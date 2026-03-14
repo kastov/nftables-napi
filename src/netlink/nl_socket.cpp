@@ -75,7 +75,7 @@ bool NlSocket::is_valid() const {
     return nl_ != nullptr;
 }
 
-NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent) {
+NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent, uint32_t base_seq) {
     ssize_t sent = mnl_socket_sendto(nl_,
                                      mnl_nlmsg_batch_head(batch),
                                      mnl_nlmsg_batch_size(batch));
@@ -98,17 +98,24 @@ NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent)
     if (ret < 0)
         return {false, std::string("mnl_socket_recvfrom: ") + strerror(errno)};
     while (ret > 0) {
-        int cb_ret = mnl_cb_run2(recv_buf, static_cast<size_t>(ret), 0, portid_,
+        int cb_ret = mnl_cb_run2(recv_buf, static_cast<size_t>(ret), base_seq, portid_,
                                   nullptr, &ctx, cb_ctl, NLMSG_ERROR + 1);
         if (cb_ret <= 0)
             break;
 
         // Non-blocking read for remaining kernel responses
-        ret = recv(fd, recv_buf, sizeof(recv_buf), MSG_DONTWAIT);
+        do {
+            ret = recv(fd, recv_buf, sizeof(recv_buf), MSG_DONTWAIT);
+        } while (ret < 0 && errno == EINTR);
     }
 
     // Drain any leftover messages to keep socket clean for next operation
-    while (recv(fd, recv_buf, sizeof(recv_buf), MSG_DONTWAIT) > 0) {}
+    for (;;) {
+        ssize_t r = recv(fd, recv_buf, sizeof(recv_buf), MSG_DONTWAIT);
+        if (r > 0) continue;
+        if (r < 0 && errno == EINTR) continue;
+        break;
+    }
 
     if (ctx.has_error)
         return {false, std::string("batch error: ") + strerror(ctx.error_code)};
