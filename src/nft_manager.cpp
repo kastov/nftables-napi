@@ -250,7 +250,7 @@ NftManager::NftManager(const Napi::CallbackInfo& info)
 
     if (info.Length() < 1 || !info[0].IsObject()) {
         Napi::TypeError::New(env,
-            "NftManager requires options object with tableName and sets")
+            "NftManager requires options object with tableName and ingressAddrSets")
             .ThrowAsJavaScriptException();
         return;
     }
@@ -264,18 +264,18 @@ NftManager::NftManager(const Napi::CallbackInfo& info)
         return;
     }
 
-    // sets — required non-empty array
-    if (!opts.Has("sets") || !opts.Get("sets").IsArray()) {
-        Napi::TypeError::New(env, "NftManager: 'sets' is required and must be an array of strings")
+    // ingressAddrSets — required non-empty array
+    if (!opts.Has("ingressAddrSets") || !opts.Get("ingressAddrSets").IsArray()) {
+        Napi::TypeError::New(env, "NftManager: 'ingressAddrSets' is required and must be an array of strings")
             .ThrowAsJavaScriptException();
         return;
     }
 
-    Napi::Array sets_arr = opts.Get("sets").As<Napi::Array>();
+    Napi::Array sets_arr = opts.Get("ingressAddrSets").As<Napi::Array>();
     uint32_t len = sets_arr.Length();
 
     if (len == 0) {
-        Napi::Error::New(env, "NftManager: 'sets' must contain at least one set name")
+        Napi::Error::New(env, "NftManager: 'ingressAddrSets' must contain at least one set name")
             .ThrowAsJavaScriptException();
         return;
     }
@@ -286,25 +286,25 @@ NftManager::NftManager(const Napi::CallbackInfo& info)
     for (uint32_t i = 0; i < len; ++i) {
         Napi::Value val = sets_arr[i];
         if (!val.IsString()) {
-            Napi::TypeError::New(env, "NftManager: 'sets[" + std::to_string(i) + "]' must be a string")
+            Napi::TypeError::New(env, "NftManager: 'ingressAddrSets[" + std::to_string(i) + "]' must be a string")
                 .ThrowAsJavaScriptException();
             return;
         }
         std::string name = val.As<Napi::String>().Utf8Value();
         if (name.empty()) {
-            Napi::Error::New(env, "NftManager: 'sets[" + std::to_string(i) + "]' must not be empty")
+            Napi::Error::New(env, "NftManager: 'ingressAddrSets[" + std::to_string(i) + "]' must not be empty")
                 .ThrowAsJavaScriptException();
             return;
         }
         in_sets.push_back(std::move(name));
     }
 
-    // Parse optional outSets (OutIP)
-    std::vector<std::string> out_sets = parse_optional_string_array(env, opts, "outSets", "NftManager");
+    // Parse optional egressAddrSets (OutIP)
+    std::vector<std::string> out_sets = parse_optional_string_array(env, opts, "egressAddrSets", "NftManager");
     if (env.IsExceptionPending()) return;
 
-    // Parse optional outPortSets (OutPort)
-    std::vector<std::string> out_port_sets = parse_optional_string_array(env, opts, "outPortSets", "NftManager");
+    // Parse optional egressPortSets (OutPort)
+    std::vector<std::string> out_port_sets = parse_optional_string_array(env, opts, "egressPortSets", "NftManager");
     if (env.IsExceptionPending()) return;
 
     // Cross-array duplicate check: all names must be unique across all arrays

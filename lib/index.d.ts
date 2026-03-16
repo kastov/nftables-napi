@@ -9,31 +9,31 @@ export interface NftManagerOptions {
     /** Base table name. IPv6 table auto-appends '6'. */
     tableName: string;
     /**
-     * Input/forward IP set names (≥1 required). Block by source address.
+     * Ingress IP set names (≥1 required). Block by source address.
      * Rules: log prefix "<setName>: " + named counter + drop on input and forward chains.
      * IPv6 sets auto-append '6'.
      */
-    sets: string[];
+    ingressAddrSets: string[];
     /**
-     * Output IP set names (optional). Block by destination address.
+     * Egress IP set names (optional). Block by destination address.
      * Rules: named counter + drop on output chain (no log).
      * IPv6 sets auto-append '6'.
      */
-    outSets?: string[];
+    egressAddrSets?: string[];
     /**
-     * Output port set names (optional). Block by tcp/udp destination port.
+     * Egress port set names (optional). Block by tcp/udp destination port.
      * Rules: single concatenated (proto . port) lookup + named counter + drop on output chain (no log).
      * Port is added to BOTH IPv4 and IPv6 tables (ports are family-independent).
      * IPv6 sets auto-append '6'.
      */
-    outPortSets?: string[];
+    egressPortSets?: string[];
 }
 
 /** Options for adding a single address. */
 export interface AddAddressOptions {
     /** IPv4 or IPv6 address (e.g., "1.2.3.4" or "2001:db8::1"). */
     ip: string;
-    /** Target set name (must match one from constructor's sets or outSets). */
+    /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
     /** Timeout in seconds. Omit for permanent. */
     timeout?: number;
@@ -43,7 +43,7 @@ export interface AddAddressOptions {
 export interface RemoveAddressOptions {
     /** IPv4 or IPv6 address to remove. */
     ip: string;
-    /** Target set name (must match one from constructor's sets or outSets). */
+    /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
 }
 
@@ -51,7 +51,7 @@ export interface RemoveAddressOptions {
 export interface AddAddressesOptions {
     /** Array of IPv4/IPv6 addresses. */
     ips: string[];
-    /** Target set name (must match one from constructor's sets or outSets). */
+    /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
     /** Timeout in seconds. Omit for permanent. */
     timeout?: number;
@@ -61,7 +61,7 @@ export interface AddAddressesOptions {
 export interface RemoveAddressesOptions {
     /** Array of IPv4/IPv6 addresses to remove. */
     ips: string[];
-    /** Target set name (must match one from constructor's sets or outSets). */
+    /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
 }
 
@@ -69,7 +69,7 @@ export interface RemoveAddressesOptions {
 export interface AddPortOptions {
     /** Port number (0-65535). */
     port: number;
-    /** Target port set name (must match one from constructor's outPortSets). */
+    /** Target port set name (must match one from constructor's egressPortSets). */
     set: string;
     /** Protocol: 'tcp', 'udp', or omit for both. Default: both. */
     protocol?: 'tcp' | 'udp';
@@ -81,7 +81,7 @@ export interface AddPortOptions {
 export interface RemovePortOptions {
     /** Port number (0-65535). */
     port: number;
-    /** Target port set name (must match one from constructor's outPortSets). */
+    /** Target port set name (must match one from constructor's egressPortSets). */
     set: string;
     /** Protocol: 'tcp', 'udp', or omit for both. Default: both. */
     protocol?: 'tcp' | 'udp';
@@ -91,7 +91,7 @@ export interface RemovePortOptions {
 export interface AddPortsOptions {
     /** Array of port numbers (0-65535). */
     ports: number[];
-    /** Target port set name (must match one from constructor's outPortSets). */
+    /** Target port set name (must match one from constructor's egressPortSets). */
     set: string;
     /** Protocol: 'tcp', 'udp', or omit for both. Default: both. */
     protocol?: 'tcp' | 'udp';
@@ -103,7 +103,7 @@ export interface AddPortsOptions {
 export interface RemovePortsOptions {
     /** Array of port numbers (0-65535). */
     ports: number[];
-    /** Target port set name (must match one from constructor's outPortSets). */
+    /** Target port set name (must match one from constructor's egressPortSets). */
     set: string;
     /** Protocol: 'tcp', 'udp', or omit for both. Default: both. */
     protocol?: 'tcp' | 'udp';
@@ -127,9 +127,9 @@ export class NftManager {
      * Creates:
      * - Named counter "processed" (global traffic counter per chain)
      * - Named counter per set (blocked traffic counter)
-     * - Input chain with log + counter + drop rules (for sets)
-     * - Forward chain with log + counter + drop rules (for sets)
-     * - Output chain with counter + drop rules (for outSets and outPortSets, no log)
+     * - Input chain with log + counter + drop rules (for ingressAddrSets)
+     * - Forward chain with log + counter + drop rules (for ingressAddrSets)
+     * - Output chain with counter + drop rules (for egressAddrSets and egressPortSets, no log)
      * - Per-element counters on all sets
      *
      * @throws {Error} if nftables operation fails
@@ -147,7 +147,7 @@ export class NftManager {
     /**
      * Adds an IP address to a set.
      * Auto-detects IPv4 vs IPv6 and routes to the correct table/set.
-     * Works with both input sets (sets) and output sets (outSets).
+     * Works with both input sets (ingressAddrSets) and output sets (egressAddrSets).
      *
      * @param options - Address, target set name, and optional timeout.
      * @throws {TypeError} if options or fields have wrong types
@@ -158,7 +158,7 @@ export class NftManager {
     /**
      * Removes an IP address from a set.
      * Idempotent — no error if IP is not in the set.
-     * Works with both input sets (sets) and output sets (outSets).
+     * Works with both input sets (ingressAddrSets) and output sets (egressAddrSets).
      *
      * @param options - Address and target set name.
      * @throws {TypeError} if options or fields have wrong types

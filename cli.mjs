@@ -16,13 +16,13 @@ function printMenu() {
   console.log('  2)  createTable');
   console.log('  3)  deleteTable');
   console.log('');
-  console.log('  === Addresses (sets / outSets) ===');
+  console.log('  === Addresses (ingressAddrSets / egressAddrSets) ===');
   console.log('  4)  addAddress');
   console.log('  5)  removeAddress');
   console.log('  6)  addAddresses');
   console.log('  7)  removeAddresses');
   console.log('');
-  console.log('  === Ports (outPortSets) ===');
+  console.log('  === Ports (egressPortSets) ===');
   console.log('  8)  addPort');
   console.log('  9)  removePort');
   console.log('  10) addPorts');
@@ -62,23 +62,23 @@ async function askProtocol() {
 async function createManager() {
   const tableName = await prompt('  tableName [remnawave]: ') || 'remnawave';
 
-  const setsRaw = await prompt('  sets (comma-separated) [blacklist]: ') || 'blacklist';
-  const sets = setsRaw.split(',').map(s => s.trim()).filter(Boolean);
+  const setsRaw = await prompt('  ingressAddrSets (comma-separated) [blacklist]: ') || 'blacklist';
+  const ingressAddrSets = setsRaw.split(',').map(s => s.trim()).filter(Boolean);
 
-  const outSetsRaw = await prompt('  outSets (comma-separated, empty = none): ');
-  const outSets = outSetsRaw ? outSetsRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+  const egressAddrSetsRaw = await prompt('  egressAddrSets (comma-separated, empty = none): ');
+  const egressAddrSets = egressAddrSetsRaw ? egressAddrSetsRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined;
 
-  const outPortSetsRaw = await prompt('  outPortSets (comma-separated, empty = none): ');
-  const outPortSets = outPortSetsRaw ? outPortSetsRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+  const egressPortSetsRaw = await prompt('  egressPortSets (comma-separated, empty = none): ');
+  const egressPortSets = egressPortSetsRaw ? egressPortSetsRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined;
 
-  const opts = { tableName, sets };
-  if (outSets) opts.outSets = outSets;
-  if (outPortSets) opts.outPortSets = outPortSets;
+  const opts = { tableName, ingressAddrSets };
+  if (egressAddrSets) opts.egressAddrSets = egressAddrSets;
+  if (egressPortSets) opts.egressPortSets = egressPortSets;
 
   nft = new NftManager(opts);
-  console.log(`  -> NftManager created (table=${tableName}, sets=[${sets}]` +
-    (outSets ? `, outSets=[${outSets}]` : '') +
-    (outPortSets ? `, outPortSets=[${outPortSets}]` : '') + ')');
+  console.log(`  -> NftManager created (table=${tableName}, ingressAddrSets=[${ingressAddrSets}]` +
+    (egressAddrSets ? `, egressAddrSets=[${egressAddrSets}]` : '') +
+    (egressPortSets ? `, egressPortSets=[${egressPortSets}]` : '') + ')');
 }
 
 async function run(fn) {

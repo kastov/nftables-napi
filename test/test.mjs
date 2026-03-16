@@ -10,9 +10,9 @@ let nft;
 try {
     nft = new NftManager({
         tableName: 'remnawave',
-        sets: ['blacklist', 'droplist'],
-        outSets: ['blocked_ips'],
-        outPortSets: ['blocked_ports']
+        ingressAddrSets: ['blacklist', 'droplist'],
+        egressAddrSets: ['blocked_ips'],
+        egressPortSets: ['blocked_ports']
     });
     canCreateContext = true;
 } catch {
@@ -35,104 +35,104 @@ describe('NftManager constructor validation', () => {
     });
 
     it('should throw without tableName', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ sets: ['bl'] }), { name: 'TypeError' });
+        assert.throws(() => new NftManager({ ingressAddrSets: ['bl'] }), { name: 'TypeError' });
     });
 
     it('should throw with non-string tableName', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 123, sets: ['bl'] }), { name: 'TypeError' });
+        assert.throws(() => new NftManager({ tableName: 123, ingressAddrSets: ['bl'] }), { name: 'TypeError' });
     });
 
-    it('should throw without sets', { skip: !canCreateContext }, () => {
+    it('should throw without ingressAddrSets', { skip: !canCreateContext }, () => {
         assert.throws(() => new NftManager({ tableName: 't' }), { name: 'TypeError' });
     });
 
-    it('should throw with non-array sets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: 'bl' }), { name: 'TypeError' });
+    it('should throw with non-array ingressAddrSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: 'bl' }), { name: 'TypeError' });
     });
 
-    it('should throw with empty sets array', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: [] }));
+    it('should throw with empty ingressAddrSets array', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: [] }));
     });
 
-    it('should throw with non-string element in sets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: [123] }), { name: 'TypeError' });
+    it('should throw with non-string element in ingressAddrSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: [123] }), { name: 'TypeError' });
     });
 
-    it('should throw with empty string in sets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: [''] }));
+    it('should throw with empty string in ingressAddrSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: [''] }));
     });
 
-    it('should throw with duplicate set names in sets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl', 'bl'] }));
+    it('should throw with duplicate set names in ingressAddrSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl', 'bl'] }));
     });
 
-    // outSets validation
-    it('should throw with non-array outSets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outSets: 'x' }), { name: 'TypeError' });
+    // egressAddrSets validation
+    it('should throw with non-array egressAddrSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], egressAddrSets: 'x' }), { name: 'TypeError' });
     });
 
-    it('should throw with non-string in outSets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outSets: [123] }), { name: 'TypeError' });
+    it('should throw with non-string in egressAddrSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], egressAddrSets: [123] }), { name: 'TypeError' });
     });
 
-    it('should throw with empty string in outSets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outSets: [''] }));
+    it('should throw with empty string in egressAddrSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], egressAddrSets: [''] }));
     });
 
-    // outPortSets validation
-    it('should throw with non-array outPortSets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outPortSets: 42 }), { name: 'TypeError' });
+    // egressPortSets validation
+    it('should throw with non-array egressPortSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], egressPortSets: 42 }), { name: 'TypeError' });
     });
 
-    it('should throw with non-string in outPortSets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outPortSets: [true] }), { name: 'TypeError' });
+    it('should throw with non-string in egressPortSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], egressPortSets: [true] }), { name: 'TypeError' });
     });
 
     // Cross-array duplicate check
-    it('should throw with duplicate name across sets and outSets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outSets: ['bl'] }));
+    it('should throw with duplicate name across ingressAddrSets and egressAddrSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], egressAddrSets: ['bl'] }));
     });
 
-    it('should throw with duplicate name across sets and outPortSets', { skip: !canCreateContext }, () => {
-        assert.throws(() => new NftManager({ tableName: 't', sets: ['bl'], outPortSets: ['bl'] }));
+    it('should throw with duplicate name across ingressAddrSets and egressPortSets', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], egressPortSets: ['bl'] }));
     });
 
-    it('should throw with duplicate name across outSets and outPortSets', { skip: !canCreateContext }, () => {
+    it('should throw with duplicate name across egressAddrSets and egressPortSets', { skip: !canCreateContext }, () => {
         assert.throws(() => new NftManager({
-            tableName: 't', sets: ['bl'], outSets: ['x'], outPortSets: ['x']
+            tableName: 't', ingressAddrSets: ['bl'], egressAddrSets: ['x'], egressPortSets: ['x']
         }));
     });
 
     // Valid constructions
     it('should create with single set (backward compat)', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ tableName: 'test', sets: ['ban'] });
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['ban'] });
         assert.ok(mgr);
     });
 
-    it('should create with sets + outSets', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ tableName: 'test', sets: ['bl'], outSets: ['out'] });
+    it('should create with ingressAddrSets + egressAddrSets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], egressAddrSets: ['out'] });
         assert.ok(mgr);
     });
 
-    it('should create with sets + outPortSets', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ tableName: 'test', sets: ['bl'], outPortSets: ['ports'] });
+    it('should create with ingressAddrSets + egressPortSets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], egressPortSets: ['ports'] });
         assert.ok(mgr);
     });
 
     it('should create with all three', { skip: !canCreateContext }, () => {
         const mgr = new NftManager({
-            tableName: 'test', sets: ['a', 'b'], outSets: ['c'], outPortSets: ['d']
+            tableName: 'test', ingressAddrSets: ['a', 'b'], egressAddrSets: ['c'], egressPortSets: ['d']
         });
         assert.ok(mgr);
     });
 
-    it('should accept empty outSets and outPortSets', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ tableName: 'test', sets: ['bl'], outSets: [], outPortSets: [] });
+    it('should accept empty egressAddrSets and egressPortSets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], egressAddrSets: [], egressPortSets: [] });
         assert.ok(mgr);
     });
 
-    it('should accept undefined outSets and outPortSets', { skip: !canCreateContext }, () => {
-        const mgr = new NftManager({ tableName: 'test', sets: ['bl'] });
+    it('should accept undefined egressAddrSets and egressPortSets', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'] });
         assert.ok(mgr);
     });
 });
@@ -189,8 +189,8 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         assert.throws(() => nft.addAddress({ ip: '192.168.1.0/24', set: 'blacklist' }));
     });
 
-    // addAddress works with outSets
-    it('should accept addAddress with outSet name', () => {
+    // addAddress works with egressAddrSets
+    it('should accept addAddress with egressAddrSet name', () => {
         // Should not throw synchronously (would fail asynchronously without table)
         const p = nft.addAddress({ ip: '1.2.3.4', set: 'blocked_ips', timeout: 60 });
         p.catch(() => {}); // suppress async rejection (no table created)
@@ -527,7 +527,7 @@ describe('NftManager integration (output ports)', { skip: !canCreateContext }, (
     });
 });
 
-// ─── Integration: backward compat (sets only) ──────────────────────────────
+// ─── Integration: backward compat (ingressAddrSets only) ────────────────────
 
 describe('NftManager integration (backward compat)', { skip: !canCreateContext }, () => {
     let simple;
@@ -536,8 +536,8 @@ describe('NftManager integration (backward compat)', { skip: !canCreateContext }
         try { await simple.deleteTable(); } catch { /* ignore */ }
     });
 
-    it('should create with sets only (no outSets/outPortSets)', async () => {
-        simple = new NftManager({ tableName: 'backcompat', sets: ['ban'] });
+    it('should create with ingressAddrSets only (no egressAddrSets/egressPortSets)', async () => {
+        simple = new NftManager({ tableName: 'backcompat', ingressAddrSets: ['ban'] });
         await simple.createTable();
     });
 
@@ -563,9 +563,9 @@ describe('NftManager integration (full config)', { skip: !canCreateContext }, ()
     it('should create with all set types', async () => {
         full = new NftManager({
             tableName: 'fulltest',
-            sets: ['banlist', 'droplist'],
-            outSets: ['out_blocked'],
-            outPortSets: ['out_ports']
+            ingressAddrSets: ['banlist', 'droplist'],
+            egressAddrSets: ['out_blocked'],
+            egressPortSets: ['out_ports']
         });
         await full.createTable();
     });

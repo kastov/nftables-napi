@@ -35,9 +35,9 @@ const { NftManager } = require("nftables-napi");
 
 const nft = new NftManager({
   tableName: "myfw",
-  sets: ["blacklist"],
-  outSets: ["blocklist"],
-  outPortSets: ["blocked_ports"],
+  ingressAddrSets: ["blacklist"],
+  egressAddrSets: ["blocklist"],
+  egressPortSets: ["blocked_ports"],
 });
 
 await nft.createTable();
@@ -82,9 +82,9 @@ await nft.deleteTable();
 | Option | Type | Required | Description |
 | --- | --- | --- | --- |
 | `tableName` | `string` | Yes | Base table name. IPv6 table auto-appends `'6'`. |
-| `sets` | `string[]` | Yes | Input/forward IP set names (≥1). Block by **source** address on input and forward chains. Rules: log + named counter + drop. IPv6 sets auto-append `'6'`. |
-| `outSets` | `string[]` | No | Output IP set names. Block by **destination** address on output chain. Rules: named counter + drop (no log). IPv6 sets auto-append `'6'`. |
-| `outPortSets` | `string[]` | No | Output port set names. Block by **destination port** (TCP/UDP) on output chain using concatenated `inet_proto . inet_service` sets. Ports are added to both IPv4 and IPv6 tables. IPv6 sets auto-append `'6'`. |
+| `ingressAddrSets` | `string[]` | Yes | Input/forward IP set names (≥1). Block by **source** address on input and forward chains. Rules: log + named counter + drop. IPv6 sets auto-append `'6'`. |
+| `egressAddrSets` | `string[]` | No | Output IP set names. Block by **destination** address on output chain. Rules: named counter + drop (no log). IPv6 sets auto-append `'6'`. |
+| `egressPortSets` | `string[]` | No | Output port set names. Block by **destination port** (TCP/UDP) on output chain using concatenated `inet_proto . inet_service` sets. Ports are added to both IPv4 and IPv6 tables. IPv6 sets auto-append `'6'`. |
 
 ### Methods
 
@@ -99,7 +99,7 @@ All methods return `Promise<void>` and throw on error.
 
 #### IP address operations
 
-Work with both `sets` (input/forward) and `outSets` (output).
+Work with both `ingressAddrSets` (input/forward) and `egressAddrSets` (output).
 
 | Method | Description |
 | --- | --- |
@@ -110,7 +110,7 @@ Work with both `sets` (input/forward) and `outSets` (output).
 
 #### Port operations
 
-Work with `outPortSets` only. Ports are added to both IPv4 and IPv6 tables.
+Work with `egressPortSets` only. Ports are added to both IPv4 and IPv6 tables.
 
 | Method | Description |
 | --- | --- |
@@ -121,7 +121,7 @@ Work with `outPortSets` only. Ports are added to both IPv4 and IPv6 tables.
 
 ### What `createTable()` builds
 
-For a config with `sets: ["bl"]`, `outSets: ["out"]`, `outPortSets: ["ports"]`:
+For a config with `ingressAddrSets: ["bl"]`, `egressAddrSets: ["out"]`, `egressPortSets: ["ports"]`:
 
 ```
 table ip myfw {
