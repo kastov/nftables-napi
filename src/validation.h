@@ -16,9 +16,18 @@ struct IpAddr {
     uint32_t len = 0;
 };
 
-// Parse IP string, validate via inet_pton, store binary form.
-// Returns IpAddr with family=Invalid on failure.
-[[nodiscard]] IpAddr parse_ip(const std::string& ip);
+struct CidrAddr {
+    IpAddr network;       // network address (e.g., 10.0.0.0)
+    IpAddr end;           // exclusive end address (e.g., 11.0.0.0 for /8)
+};
+
+// Parse IP string or CIDR notation. Accepts:
+//   "1.2.3.4"       -> CidrAddr{network=1.2.3.4, end=1.2.3.5}
+//   "10.0.0.0/8"    -> CidrAddr{network=10.0.0.0, end=11.0.0.0}
+//   "2001:db8::/32" -> CidrAddr{network=2001:db8::, end=2001:db9::}
+// Returns CidrAddr with network.family=Invalid on failure.
+// Rejects: host bits set (192.168.1.1/24), prefix > 32/128, /0 (too dangerous).
+[[nodiscard]] CidrAddr parse_ip_or_cidr(const std::string& input);
 
 struct PortVal {
     uint16_t port;
