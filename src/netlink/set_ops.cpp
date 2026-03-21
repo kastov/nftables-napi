@@ -64,14 +64,21 @@ static NlResult bulk_set_elem_op(
             nftnl_set_set_u32(s.get(), NFTNL_SET_KEY_LEN, key_len);
 
             for (size_t i = offset; i < end; ++i) {
-                auto* e = nftnl_set_elem_alloc();
-                if (!e) return {false, "nftnl_set_elem_alloc failed"};
-                nftnl_set_elem_set(e, NFTNL_SET_ELEM_KEY, family_addrs[i]->bytes, family_addrs[i]->len);
-                nftnl_set_elem_set(e, NFTNL_SET_ELEM_KEY_END, family_addrs[i]->end_bytes, family_addrs[i]->len);
+                // Start element: carries the key, timeout, and counters
+                auto* e_start = nftnl_set_elem_alloc();
+                if (!e_start) return {false, "nftnl_set_elem_alloc failed"};
+                nftnl_set_elem_set(e_start, NFTNL_SET_ELEM_KEY, family_addrs[i]->bytes, family_addrs[i]->len);
                 if (timeout_ms > 0) {
-                    nftnl_set_elem_set_u64(e, NFTNL_SET_ELEM_TIMEOUT, timeout_ms);
+                    nftnl_set_elem_set_u64(e_start, NFTNL_SET_ELEM_TIMEOUT, timeout_ms);
                 }
-                nftnl_set_elem_add(s.get(), e);
+                nftnl_set_elem_add(s.get(), e_start);
+
+                // End element: exclusive upper bound with INTERVAL_END flag
+                auto* e_end = nftnl_set_elem_alloc();
+                if (!e_end) return {false, "nftnl_set_elem_alloc failed"};
+                nftnl_set_elem_set(e_end, NFTNL_SET_ELEM_KEY, family_addrs[i]->end_bytes, family_addrs[i]->len);
+                nftnl_set_elem_set_u32(e_end, NFTNL_SET_ELEM_FLAGS, NFT_SET_ELEM_INTERVAL_END);
+                nftnl_set_elem_add(s.get(), e_end);
             }
 
             NlBatch batch;
