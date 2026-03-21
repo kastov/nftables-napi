@@ -131,11 +131,14 @@ CidrAddr parse_ip_or_cidr(const std::string& input) {
         }
     }
 
-    int prefix;
-    try {
-        prefix = std::stoi(prefix_str);
-    } catch (...) {
+    // Manual parse — no exceptions needed (digits already validated above).
+    // Reject prefix strings longer than 3 chars (max valid: "128").
+    if (prefix_str.size() > 3) {
         return result;
+    }
+    int prefix = 0;
+    for (char c : prefix_str) {
+        prefix = prefix * 10 + (c - '0');
     }
 
     IpAddr ip = parse_ip(base_str);
