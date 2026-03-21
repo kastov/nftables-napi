@@ -54,6 +54,12 @@ inline constexpr uint32_t TRANSPORT_DPORT_LEN = 2;
 inline constexpr uint32_t DATATYPE_PROTO_SERVICE = (12 << 6 | 13);
 inline constexpr uint32_t PROTO_SERVICE_KEY_LEN = 8;
 
+// Byte offsets within the 8-byte concatenated (proto . port) key
+// Layout: [proto:1][pad:3][port_hi:1][port_lo:1][pad:2]
+inline constexpr uint32_t PORT_KEY_PROTO_OFFSET = 0;
+inline constexpr uint32_t PORT_KEY_PORT_HI_OFFSET = 4;
+inline constexpr uint32_t PORT_KEY_PORT_LO_OFFSET = 5;
+
 // L4 protocol numbers
 inline constexpr uint8_t PROTO_TCP = 6;
 inline constexpr uint8_t PROTO_UDP = 17;

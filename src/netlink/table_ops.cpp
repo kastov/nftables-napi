@@ -69,7 +69,7 @@ static bool add_counter_obj(NlBatch& batch, uint32_t family, const char* table,
 
 static bool add_set(NlBatch& batch, uint32_t family, const char* table,
                     const char* name, uint32_t key_type, uint32_t key_len,
-                    uint32_t set_id,
+                    uint32_t set_id, bool interval = false,
                     const uint8_t* concat_field_lens = nullptr,
                     size_t concat_field_count = 0) {
     auto s = nft::make_set();
@@ -81,6 +81,8 @@ static bool add_set(NlBatch& batch, uint32_t family, const char* table,
     nftnl_set_set_u32(s.get(), NFTNL_SET_KEY_LEN, key_len);
 
     uint32_t set_flags = NFT_SET_TIMEOUT | NFT_SET_EXPR;
+    if (interval)
+        set_flags |= NFT_SET_INTERVAL;
     if (concat_field_lens && concat_field_count > 0)
         set_flags |= NFT_SET_CONCAT;
     nftnl_set_set_u32(s.get(), NFTNL_SET_FLAGS, set_flags);
@@ -297,10 +299,11 @@ NlResult CreateTableOp::execute(NlSocket& sock) {
             key_len_v4 = IPV4_ADDR_LEN;
             key_len_v6 = IPV6_ADDR_LEN;
         }
+        bool is_interval = (sd.kind != SetKind::OutPort);
         if (!add_set(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), sd.name.c_str(),
-                     key_type_v4, key_len_v4, sid++, concat_fields, concat_count)
+                     key_type_v4, key_len_v4, sid++, is_interval, concat_fields, concat_count)
             || !add_set(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), sd.name_v6.c_str(),
-                        key_type_v6, key_len_v6, sid++, concat_fields, concat_count))
+                        key_type_v6, key_len_v6, sid++, is_interval, concat_fields, concat_count))
             return {false, "failed to build set '" + sd.name + "'"};
     }
 

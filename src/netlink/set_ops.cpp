@@ -67,6 +67,7 @@ static NlResult bulk_set_elem_op(
                 auto* e = nftnl_set_elem_alloc();
                 if (!e) return {false, "nftnl_set_elem_alloc failed"};
                 nftnl_set_elem_set(e, NFTNL_SET_ELEM_KEY, family_addrs[i]->bytes, family_addrs[i]->len);
+                nftnl_set_elem_set(e, NFTNL_SET_ELEM_KEY_END, family_addrs[i]->end_bytes, family_addrs[i]->len);
                 if (timeout_ms > 0) {
                     nftnl_set_elem_set_u64(e, NFTNL_SET_ELEM_TIMEOUT, timeout_ms);
                 }
@@ -154,9 +155,9 @@ static NlResult bulk_port_elem_op(
                 if (!e) return {false, "nftnl_set_elem_alloc failed"};
                 // 8-byte concatenated key: [proto][pad:3][port_hi][port_lo][pad:2]
                 uint8_t key[8] = {};
-                key[0] = elems[i].proto;
-                key[4] = static_cast<uint8_t>(elems[i].port >> 8);
-                key[5] = static_cast<uint8_t>(elems[i].port & 0xFF);
+                key[nft::PORT_KEY_PROTO_OFFSET] = elems[i].proto;
+                key[nft::PORT_KEY_PORT_HI_OFFSET] = static_cast<uint8_t>(elems[i].port >> 8);
+                key[nft::PORT_KEY_PORT_LO_OFFSET] = static_cast<uint8_t>(elems[i].port & 0xFF);
                 nftnl_set_elem_set(e, NFTNL_SET_ELEM_KEY, key, sizeof(key));
                 if (timeout_ms > 0) {
                     nftnl_set_elem_set_u64(e, NFTNL_SET_ELEM_TIMEOUT, timeout_ms);

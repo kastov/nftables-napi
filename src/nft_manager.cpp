@@ -13,11 +13,12 @@
 
 static constexpr double MAX_TIMEOUT_SEC = 4294967295.0; // UINT32_MAX seconds (~136 years)
 
-static ParsedAddr to_parsed_addr(const IpAddr& addr) {
+static ParsedAddr to_parsed_addr(const CidrAddr& cidr) {
     ParsedAddr pa{};
-    pa.family = (addr.family == IpFamily::IPv4) ? nft::FAMILY_IPV4 : nft::FAMILY_IPV6;
-    pa.len = addr.len;
-    std::memcpy(pa.bytes, addr.bytes.data(), addr.len);
+    pa.family = (cidr.network.family == IpFamily::IPv4) ? nft::FAMILY_IPV4 : nft::FAMILY_IPV6;
+    pa.len = cidr.network.len;
+    std::memcpy(pa.bytes, cidr.network.bytes.data(), cidr.network.len);
+    std::memcpy(pa.end_bytes, cidr.end.bytes.data(), cidr.end.len);
     return pa;
 }
 
@@ -34,14 +35,14 @@ static std::vector<ParsedAddr> parse_ip_array(Napi::Env env, Napi::Array arr) {
         }
 
         std::string ip = val.As<Napi::String>().Utf8Value();
-        IpAddr addr = parse_ip(ip);
-        if (addr.family == IpFamily::Invalid) {
-            Napi::Error::New(env, "Invalid IP address at index " + std::to_string(i) + ": " + ip)
+        CidrAddr cidr = parse_ip_or_cidr(ip);
+        if (cidr.network.family == IpFamily::Invalid) {
+            Napi::Error::New(env, "Invalid IP address or CIDR at index " + std::to_string(i) + ": " + ip)
                 .ThrowAsJavaScriptException();
             return {};
         }
 
-        addrs.push_back(to_parsed_addr(addr));
+        addrs.push_back(to_parsed_addr(cidr));
     }
 
     return addrs;
@@ -147,23 +148,23 @@ static std::vector<uint16_t> parse_port_array(Napi::Env env, Napi::Array arr,
 
 // Parse optional protocol: 'tcp', 'udp', or absent (both).
 // Returns 0 for both, PROTO_TCP for tcp, PROTO_UDP for udp.
-// Returns 255 on error (after throwing JS exception).
-static uint8_t parse_protocol(Napi::Env env, Napi::Object opts, const char* method_name) {
+// Returns std::nullopt on error (after throwing JS exception).
+static std::optional<uint8_t> parse_protocol(Napi::Env env, Napi::Object opts, const char* method_name) {
     if (!opts.Has("protocol") || opts.Get("protocol").IsUndefined() || opts.Get("protocol").IsNull()) {
-        return 0; // both
+        return uint8_t{0}; // both
     }
     Napi::Value pv = opts.Get("protocol");
     if (!pv.IsString()) {
         std::string msg = std::string(method_name) + ": 'protocol' must be 'tcp' or 'udp'";
         Napi::TypeError::New(env, msg).ThrowAsJavaScriptException();
-        return 255;
+        return std::nullopt;
     }
     std::string proto = pv.As<Napi::String>().Utf8Value();
     if (proto == "tcp") return nft::PROTO_TCP;
     if (proto == "udp") return nft::PROTO_UDP;
     std::string msg = std::string(method_name) + ": 'protocol' must be 'tcp' or 'udp'";
     Napi::Error::New(env, msg).ThrowAsJavaScriptException();
-    return 255;
+    return std::nullopt;
 }
 
 static std::vector<PortElem> make_port_elems(uint16_t port, uint8_t proto) {
@@ -393,14 +394,14 @@ Napi::Value NftManager::AddAddress(const Napi::CallbackInfo& info) {
     auto timeout_ms = parse_timeout(env, opts, "addAddress");
     if (!timeout_ms) return env.Undefined();
 
-    IpAddr addr = parse_ip(ip);
-    if (addr.family == IpFamily::Invalid) {
-        Napi::Error::New(env, "Invalid IP address: " + ip).ThrowAsJavaScriptException();
+    CidrAddr cidr = parse_ip_or_cidr(ip);
+    if (cidr.network.family == IpFamily::Invalid) {
+        Napi::Error::New(env, "Invalid IP address or CIDR: " + ip).ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     std::vector<ParsedAddr> addrs;
-    addrs.push_back(to_parsed_addr(addr));
+    addrs.push_back(to_parsed_addr(cidr));
     auto op = std::make_unique<BulkAddSetElemOp>(std::move(addrs), *timeout_ms, config_, *set_idx);
 
     auto deferred = Napi::Promise::Deferred::New(env);
@@ -432,14 +433,14 @@ Napi::Value NftManager::RemoveAddress(const Napi::CallbackInfo& info) {
     auto set_idx = parse_set_name(env, opts, "removeAddress", *config_, true, false);
     if (!set_idx) return env.Undefined();
 
-    IpAddr addr = parse_ip(ip);
-    if (addr.family == IpFamily::Invalid) {
-        Napi::Error::New(env, "Invalid IP address: " + ip).ThrowAsJavaScriptException();
+    CidrAddr cidr = parse_ip_or_cidr(ip);
+    if (cidr.network.family == IpFamily::Invalid) {
+        Napi::Error::New(env, "Invalid IP address or CIDR: " + ip).ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     std::vector<ParsedAddr> addrs;
-    addrs.push_back(to_parsed_addr(addr));
+    addrs.push_back(to_parsed_addr(cidr));
     auto op = std::make_unique<BulkDelSetElemOp>(std::move(addrs), config_, *set_idx);
 
     auto deferred = Napi::Promise::Deferred::New(env);
@@ -552,13 +553,13 @@ Napi::Value NftManager::AddPort(const Napi::CallbackInfo& info) {
     auto set_idx = parse_set_name(env, opts, "addPort", *config_, false, true);
     if (!set_idx) return env.Undefined();
 
-    uint8_t proto = parse_protocol(env, opts, "addPort");
-    if (proto == 255) return env.Undefined();
+    auto proto = parse_protocol(env, opts, "addPort");
+    if (!proto) return env.Undefined();
 
     auto timeout_ms = parse_timeout(env, opts, "addPort");
     if (!timeout_ms) return env.Undefined();
 
-    auto elems = make_port_elems(*port, proto);
+    auto elems = make_port_elems(*port, *proto);
     auto op = std::make_unique<BulkAddPortElemOp>(std::move(elems), *timeout_ms, config_, *set_idx);
 
     auto deferred = Napi::Promise::Deferred::New(env);
@@ -586,10 +587,10 @@ Napi::Value NftManager::RemovePort(const Napi::CallbackInfo& info) {
     auto set_idx = parse_set_name(env, opts, "removePort", *config_, false, true);
     if (!set_idx) return env.Undefined();
 
-    uint8_t proto = parse_protocol(env, opts, "removePort");
-    if (proto == 255) return env.Undefined();
+    auto proto = parse_protocol(env, opts, "removePort");
+    if (!proto) return env.Undefined();
 
-    auto elems = make_port_elems(*port, proto);
+    auto elems = make_port_elems(*port, *proto);
     auto op = std::make_unique<BulkDelPortElemOp>(std::move(elems), config_, *set_idx);
 
     auto deferred = Napi::Promise::Deferred::New(env);
@@ -621,8 +622,8 @@ Napi::Value NftManager::AddPorts(const Napi::CallbackInfo& info) {
     auto set_idx = parse_set_name(env, opts, "addPorts", *config_, false, true);
     if (!set_idx) return env.Undefined();
 
-    uint8_t proto = parse_protocol(env, opts, "addPorts");
-    if (proto == 255) return env.Undefined();
+    auto proto = parse_protocol(env, opts, "addPorts");
+    if (!proto) return env.Undefined();
 
     auto timeout_ms = parse_timeout(env, opts, "addPorts");
     if (!timeout_ms) return env.Undefined();
@@ -637,7 +638,7 @@ Napi::Value NftManager::AddPorts(const Napi::CallbackInfo& info) {
         return promise;
     }
 
-    auto elems = make_port_elems_bulk(ports, proto);
+    auto elems = make_port_elems_bulk(ports, *proto);
     auto op = std::make_unique<BulkAddPortElemOp>(std::move(elems), *timeout_ms, config_, *set_idx);
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();
@@ -668,8 +669,8 @@ Napi::Value NftManager::RemovePorts(const Napi::CallbackInfo& info) {
     auto set_idx = parse_set_name(env, opts, "removePorts", *config_, false, true);
     if (!set_idx) return env.Undefined();
 
-    uint8_t proto = parse_protocol(env, opts, "removePorts");
-    if (proto == 255) return env.Undefined();
+    auto proto = parse_protocol(env, opts, "removePorts");
+    if (!proto) return env.Undefined();
 
     std::vector<uint16_t> ports = parse_port_array(env, arr, "removePorts");
     if (env.IsExceptionPending()) return env.Undefined();
@@ -681,7 +682,7 @@ Napi::Value NftManager::RemovePorts(const Napi::CallbackInfo& info) {
         return promise;
     }
 
-    auto elems = make_port_elems_bulk(ports, proto);
+    auto elems = make_port_elems_bulk(ports, *proto);
     auto op = std::make_unique<BulkDelPortElemOp>(std::move(elems), config_, *set_idx);
     auto deferred = Napi::Promise::Deferred::New(env);
     auto promise = deferred.Promise();
