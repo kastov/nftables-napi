@@ -1,6 +1,6 @@
 /**
  * Native nftables manager for Linux firewall.
- * Manages IPv4/IPv6 tables with dynamic sets via libnftnl + libmnl (direct netlink, no nft CLI).
+ * Manages IPv4/IPv6 tables with dynamic sets and CIDR ranges via libnftnl + libmnl (direct netlink, no nft CLI).
  * Requires CAP_NET_ADMIN or root privileges.
  */
 
@@ -31,7 +31,7 @@ export interface NftManagerOptions {
 
 /** Options for adding a single address. */
 export interface AddAddressOptions {
-    /** IPv4 or IPv6 address (e.g., "1.2.3.4" or "2001:db8::1"). */
+    /** IPv4/IPv6 address or CIDR (e.g., "1.2.3.4", "10.0.0.0/8", "2001:db8::/32"). */
     ip: string;
     /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
@@ -41,7 +41,7 @@ export interface AddAddressOptions {
 
 /** Options for removing a single address. */
 export interface RemoveAddressOptions {
-    /** IPv4 or IPv6 address to remove. */
+    /** IPv4/IPv6 address or CIDR to remove (must match exactly as added). */
     ip: string;
     /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
@@ -49,7 +49,7 @@ export interface RemoveAddressOptions {
 
 /** Options for bulk adding addresses. */
 export interface AddAddressesOptions {
-    /** Array of IPv4/IPv6 addresses. */
+    /** Array of IPv4/IPv6 addresses or CIDRs. */
     ips: string[];
     /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
@@ -59,7 +59,7 @@ export interface AddAddressesOptions {
 
 /** Options for bulk removing addresses. */
 export interface RemoveAddressesOptions {
-    /** Array of IPv4/IPv6 addresses to remove. */
+    /** Array of IPv4/IPv6 addresses or CIDRs to remove. */
     ips: string[];
     /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
@@ -145,8 +145,8 @@ export class NftManager {
     deleteTable(): Promise<void>;
 
     /**
-     * Adds an IP address to a set.
-     * Auto-detects IPv4 vs IPv6 and routes to the correct table/set.
+     * Adds an IP address or CIDR range to a set.
+     * Auto-detects IPv4 vs IPv6 and routes to the correct table/set. Accepts CIDR notation (e.g., "10.0.0.0/8").
      * Works with both input sets (ingressAddrSets) and output sets (egressAddrSets).
      *
      * @param options - Address, target set name, and optional timeout.
@@ -156,7 +156,7 @@ export class NftManager {
     addAddress(options: AddAddressOptions): Promise<void>;
 
     /**
-     * Removes an IP address from a set.
+     * Removes an IP address or CIDR range from a set.
      * Idempotent — no error if IP is not in the set.
      * Works with both input sets (ingressAddrSets) and output sets (egressAddrSets).
      *
@@ -167,7 +167,7 @@ export class NftManager {
     removeAddress(options: RemoveAddressOptions): Promise<void>;
 
     /**
-     * Adds multiple IP addresses to a set in bulk.
+     * Adds multiple IP addresses or CIDR ranges to a set in bulk.
      * Empty arrays are a no-op.
      *
      * @param options - Array of addresses, target set name, and optional timeout.
@@ -177,7 +177,7 @@ export class NftManager {
     addAddresses(options: AddAddressesOptions): Promise<void>;
 
     /**
-     * Removes multiple IP addresses from a set in bulk.
+     * Removes multiple IP addresses or CIDR ranges from a set in bulk.
      * Idempotent — no error if IPs are not in the set.
      * Empty arrays are a no-op.
      *

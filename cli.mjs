@@ -121,7 +121,7 @@ async function main() {
 
       case '4':
         await run(async () => {
-          const ip = await prompt('  ip: ');
+          const ip = await prompt('  ip/cidr: ');
           const set = await askSet();
           const timeout = await askTimeout();
           await nft.addAddress({ ip, set, timeout });
@@ -131,7 +131,7 @@ async function main() {
 
       case '5':
         await run(async () => {
-          const ip = await prompt('  ip: ');
+          const ip = await prompt('  ip/cidr: ');
           const set = await askSet();
           await nft.removeAddress({ ip, set });
           console.log(`  -> removed ${ip} from ${set}`);
@@ -140,7 +140,7 @@ async function main() {
 
       case '6':
         await run(async () => {
-          const raw = await prompt('  ips (comma-separated): ');
+          const raw = await prompt('  ips/cidrs (comma-separated): ');
           const ips = raw.split(',').map(s => s.trim()).filter(Boolean);
           const set = await askSet();
           const timeout = await askTimeout();
@@ -151,7 +151,7 @@ async function main() {
 
       case '7':
         await run(async () => {
-          const raw = await prompt('  ips (comma-separated): ');
+          const raw = await prompt('  ips/cidrs (comma-separated): ');
           const ips = raw.split(',').map(s => s.trim()).filter(Boolean);
           const set = await askSet();
           await nft.removeAddresses({ ips, set });

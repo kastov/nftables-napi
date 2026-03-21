@@ -185,8 +185,47 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         assert.throws(() => nft.addAddress({ ip: '1.2.3.4', set: 'blacklist', timeout: Infinity }));
     });
 
-    it('should throw on addAddress with CIDR notation', () => {
-        assert.throws(() => nft.addAddress({ ip: '192.168.1.0/24', set: 'blacklist' }));
+    // CIDR validation
+    it('should accept CIDR notation', () => {
+        const p = nft.addAddress({ ip: '192.168.1.0/24', set: 'blacklist', timeout: 60 });
+        p.catch(() => {});
+        assert.ok(p instanceof Promise);
+    });
+
+    it('should accept IPv6 CIDR notation', () => {
+        const p = nft.addAddress({ ip: '2001:db8::/32', set: 'blacklist', timeout: 60 });
+        p.catch(() => {});
+        assert.ok(p instanceof Promise);
+    });
+
+    it('should accept /32 single-host CIDR', () => {
+        const p = nft.addAddress({ ip: '1.2.3.4/32', set: 'blacklist' });
+        p.catch(() => {});
+        assert.ok(p instanceof Promise);
+    });
+
+    it('should throw on CIDR with host bits set', () => {
+        assert.throws(() => nft.addAddress({ ip: '192.168.1.1/24', set: 'blacklist' }));
+    });
+
+    it('should throw on invalid CIDR prefix /33', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4/33', set: 'blacklist' }));
+    });
+
+    it('should throw on invalid CIDR prefix /0', () => {
+        assert.throws(() => nft.addAddress({ ip: '0.0.0.0/0', set: 'blacklist' }));
+    });
+
+    it('should throw on malformed CIDR prefix', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4/abc', set: 'blacklist' }));
+    });
+
+    it('should throw on empty CIDR prefix', () => {
+        assert.throws(() => nft.addAddress({ ip: '1.2.3.4/', set: 'blacklist' }));
+    });
+
+    it('should throw on IPv6 CIDR prefix /129', () => {
+        assert.throws(() => nft.addAddress({ ip: '2001:db8::/129', set: 'blacklist' }));
     });
 
     // addAddress works with egressAddrSets
@@ -194,6 +233,12 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         // Should not throw synchronously (would fail asynchronously without table)
         const p = nft.addAddress({ ip: '1.2.3.4', set: 'blocked_ips', timeout: 60 });
         p.catch(() => {}); // suppress async rejection (no table created)
+        assert.ok(p instanceof Promise);
+    });
+
+    it('should accept CIDR with egressAddrSet name', () => {
+        const p = nft.addAddress({ ip: '10.0.0.0/8', set: 'blocked_ips', timeout: 60 });
+        p.catch(() => {});
         assert.ok(p instanceof Promise);
     });
 
@@ -420,6 +465,68 @@ describe('NftManager integration (blacklist)', { skip: !canCreateContext }, () =
     });
 
     it('should delete tables idempotently', async () => {
+        await nft.deleteTable();
+    });
+});
+
+// ─── Integration: CIDR ranges ───────────────────────────────────────────────
+
+describe('NftManager integration (CIDR)', { skip: !canCreateContext }, () => {
+    after(async () => {
+        try { await nft.deleteTable(); } catch { /* ignore */ }
+    });
+
+    it('should create tables', async () => {
+        await nft.createTable();
+    });
+
+    it('should add IPv4 CIDR with timeout', async () => {
+        await nft.addAddress({ ip: '10.0.0.0/8', set: 'blacklist', timeout: 60 });
+    });
+
+    it('should add IPv6 CIDR with timeout', async () => {
+        await nft.addAddress({ ip: '2001:db8::/32', set: 'blacklist', timeout: 120 });
+    });
+
+    it('should add /32 single-host CIDR', async () => {
+        await nft.addAddress({ ip: '192.168.1.1/32', set: 'blacklist', timeout: 60 });
+    });
+
+    it('should remove IPv4 CIDR', async () => {
+        await nft.removeAddress({ ip: '10.0.0.0/8', set: 'blacklist' });
+    });
+
+    it('should remove IPv6 CIDR', async () => {
+        await nft.removeAddress({ ip: '2001:db8::/32', set: 'blacklist' });
+    });
+
+    it('should remove /32 CIDR', async () => {
+        await nft.removeAddress({ ip: '192.168.1.1/32', set: 'blacklist' });
+    });
+
+    it('should bulk add mixed IPs and CIDRs', async () => {
+        await nft.addAddresses({
+            ips: ['1.2.3.4', '10.0.0.0/8', '192.168.0.0/16', '2001:db8::1'],
+            set: 'blacklist', timeout: 300
+        });
+    });
+
+    it('should bulk remove mixed IPs and CIDRs', async () => {
+        await nft.removeAddresses({
+            ips: ['1.2.3.4', '10.0.0.0/8', '192.168.0.0/16', '2001:db8::1'],
+            set: 'blacklist'
+        });
+    });
+
+    it('should add CIDR to output set', async () => {
+        await nft.addAddress({ ip: '172.16.0.0/12', set: 'blocked_ips', timeout: 60 });
+    });
+
+    it('should remove CIDR from output set', async () => {
+        await nft.removeAddress({ ip: '172.16.0.0/12', set: 'blocked_ips' });
+    });
+
+    it('should delete tables', async () => {
         await nft.deleteTable();
     });
 });
