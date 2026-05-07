@@ -12,12 +12,78 @@ extern "C" {
 }
 
 #include <algorithm>
+#include <cstring>
 
 static_assert(nft::FAMILY_IPV4 == NFPROTO_IPV4, "nft::FAMILY_IPV4 must match NFPROTO_IPV4");
 static_assert(nft::FAMILY_IPV6 == NFPROTO_IPV6, "nft::FAMILY_IPV6 must match NFPROTO_IPV6");
 static_assert(nft::PROTO_SERVICE_KEY_LEN == 8, "concatenated proto.service key must be 8 bytes");
 
 enum class SetElemAction { Add, Del };
+
+// Merge overlapping or adjacent intervals per family. Required because
+// rbtree-backed interval sets reject inserts that overlap an existing range,
+// and adjacent ranges produce duplicate boundary keys (start of one == end
+// marker of another). Result is sorted, disjoint by family.
+//
+// Wraparound intervals (end_bytes <= bytes lexicographically — e.g. a /32 of
+// 255.255.255.255 whose exclusive end overflows to 0.0.0.0) are not merged:
+// lex-comparison breaks down across the address-space wrap, and naive merge
+// would silently drop the entry. They are passed through as-is.
+static std::vector<ParsedAddr> merge_intervals(std::vector<ParsedAddr> addrs) {
+    if (addrs.size() < 2) return addrs;
+
+    std::sort(addrs.begin(), addrs.end(), [](const ParsedAddr& a, const ParsedAddr& b) {
+        if (a.family != b.family) return a.family < b.family;
+        return std::memcmp(a.bytes, b.bytes, a.len) < 0;
+    });
+
+    auto is_wrapped = [](const ParsedAddr& p) {
+        return std::memcmp(p.end_bytes, p.bytes, p.len) <= 0;
+    };
+
+    std::vector<ParsedAddr> merged;
+    merged.reserve(addrs.size());
+    merged.push_back(addrs[0]);
+
+    for (size_t i = 1; i < addrs.size(); ++i) {
+        ParsedAddr& last = merged.back();
+        const ParsedAddr& cur = addrs[i];
+
+        if (cur.family != last.family || is_wrapped(cur) || is_wrapped(last)) {
+            merged.push_back(cur);
+            continue;
+        }
+
+        // Overlap or adjacency: cur.start <= last.end (end is exclusive).
+        if (std::memcmp(cur.bytes, last.end_bytes, cur.len) <= 0) {
+            // Extend end if cur reaches further.
+            if (std::memcmp(cur.end_bytes, last.end_bytes, cur.len) > 0) {
+                std::memcpy(last.end_bytes, cur.end_bytes, cur.len);
+            }
+        } else {
+            merged.push_back(cur);
+        }
+    }
+
+    return merged;
+}
+
+// Drop duplicate (proto, port) pairs. Concat sets reject duplicates inside
+// a single batch with EEXIST.
+static std::vector<PortElem> dedup_port_elems(std::vector<PortElem> elems) {
+    if (elems.size() < 2) return elems;
+
+    std::sort(elems.begin(), elems.end(), [](const PortElem& a, const PortElem& b) {
+        if (a.proto != b.proto) return a.proto < b.proto;
+        return a.port < b.port;
+    });
+    elems.erase(std::unique(elems.begin(), elems.end(),
+                            [](const PortElem& a, const PortElem& b) {
+                                return a.proto == b.proto && a.port == b.port;
+                            }),
+                elems.end());
+    return elems;
+}
 
 static NlResult bulk_set_elem_op(
     const std::vector<ParsedAddr>& addrs,
@@ -107,7 +173,8 @@ BulkAddSetElemOp::BulkAddSetElemOp(std::vector<ParsedAddr> addrs, uint64_t timeo
       cfg_(std::move(config)), set_idx_(set_idx) {}
 
 NlResult BulkAddSetElemOp::execute(NlSocket& sock) {
-    return bulk_set_elem_op(addrs_, sock, SetElemAction::Add, *cfg_, set_idx_, timeout_ms_);
+    auto merged = merge_intervals(std::move(addrs_));
+    return bulk_set_elem_op(merged, sock, SetElemAction::Add, *cfg_, set_idx_, timeout_ms_);
 }
 
 BulkDelSetElemOp::BulkDelSetElemOp(std::vector<ParsedAddr> addrs,
@@ -194,7 +261,8 @@ BulkAddPortElemOp::BulkAddPortElemOp(std::vector<PortElem> elems, uint64_t timeo
       cfg_(std::move(config)), set_idx_(set_idx) {}
 
 NlResult BulkAddPortElemOp::execute(NlSocket& sock) {
-    return bulk_port_elem_op(elems_, sock, SetElemAction::Add, *cfg_, set_idx_, timeout_ms_);
+    auto deduped = dedup_port_elems(std::move(elems_));
+    return bulk_port_elem_op(deduped, sock, SetElemAction::Add, *cfg_, set_idx_, timeout_ms_);
 }
 
 BulkDelPortElemOp::BulkDelPortElemOp(std::vector<PortElem> elems,

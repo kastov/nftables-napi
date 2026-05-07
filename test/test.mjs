@@ -526,6 +526,68 @@ describe('NftManager integration (CIDR)', { skip: !canCreateContext }, () => {
         await nft.removeAddress({ ip: '172.16.0.0/12', set: 'blocked_ips' });
     });
 
+    it('should bulk add overlapping CIDRs (subset before supernet)', async () => {
+        await nft.addAddresses({
+            ips: ['198.19.0.0/16', '198.18.0.0/15'],
+            set: 'blacklist', timeout: 300
+        });
+        await nft.removeAddresses({ ips: ['198.18.0.0/15'], set: 'blacklist' });
+    });
+
+    it('should bulk add overlapping CIDRs (supernet before subset)', async () => {
+        await nft.addAddresses({
+            ips: ['198.18.0.0/15', '198.19.0.0/16'],
+            set: 'blacklist', timeout: 300
+        });
+        await nft.removeAddresses({ ips: ['198.18.0.0/15'], set: 'blacklist' });
+    });
+
+    it('should bulk add identical CIDRs (duplicates)', async () => {
+        await nft.addAddresses({
+            ips: ['10.0.0.0/24', '10.0.0.0/24', '10.0.0.0/24'],
+            set: 'blacklist', timeout: 60
+        });
+        await nft.removeAddresses({ ips: ['10.0.0.0/24'], set: 'blacklist' });
+    });
+
+    it('should bulk add adjacent CIDRs (touching at boundary)', async () => {
+        await nft.addAddresses({
+            ips: ['10.1.0.0/24', '10.1.1.0/24'],
+            set: 'blacklist', timeout: 60
+        });
+        await nft.removeAddresses({ ips: ['10.1.0.0/23'], set: 'blacklist' });
+    });
+
+    it('should bulk add IP inside existing CIDR within same call', async () => {
+        await nft.addAddresses({
+            ips: ['10.2.0.0/16', '10.2.3.4', '10.2.3.5/32'],
+            set: 'blacklist', timeout: 60
+        });
+        await nft.removeAddresses({ ips: ['10.2.0.0/16'], set: 'blacklist' });
+    });
+
+    it('should bulk add overlapping IPv6 CIDRs', async () => {
+        await nft.addAddresses({
+            ips: ['2001:db8:1::/48', '2001:db8::/32'],
+            set: 'blacklist', timeout: 60
+        });
+        await nft.removeAddresses({ ips: ['2001:db8::/32'], set: 'blacklist' });
+    });
+
+    it('should bulk add mixed v4+v6 with overlaps both sides', async () => {
+        await nft.addAddresses({
+            ips: [
+                '10.5.0.0/16', '10.5.1.1',
+                '2001:db8:5::/48', '2001:db8:5::1'
+            ],
+            set: 'blacklist', timeout: 60
+        });
+        await nft.removeAddresses({
+            ips: ['10.5.0.0/16', '2001:db8:5::/48'],
+            set: 'blacklist'
+        });
+    });
+
     it('should delete tables', async () => {
         await nft.deleteTable();
     });

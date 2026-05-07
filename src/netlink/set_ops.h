@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 
+// One-shot Op: execute() consumes addrs_ via move; do not call twice.
 class BulkAddSetElemOp final : public NlOperation {
 public:
     BulkAddSetElemOp(std::vector<ParsedAddr> addrs, uint64_t timeout_ms,
@@ -37,6 +38,7 @@ struct PortElem {
     uint16_t port;
 };
 
+// One-shot Op: execute() consumes elems_ via move; do not call twice.
 class BulkAddPortElemOp final : public NlOperation {
 public:
     BulkAddPortElemOp(std::vector<PortElem> elems, uint64_t timeout_ms,
