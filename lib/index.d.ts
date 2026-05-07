@@ -31,7 +31,11 @@ export interface NftManagerOptions {
 
 /** Options for adding a single address. */
 export interface AddAddressOptions {
-    /** IPv4/IPv6 address or CIDR (e.g., "1.2.3.4", "10.0.0.0/8", "2001:db8::/32"). */
+    /**
+     * IPv4/IPv6 address or CIDR (e.g., "1.2.3.4", "10.0.0.0/8", "2001:db8::/32").
+     * Misaligned CIDR (host bits set) is auto-normalized to the network address,
+     * e.g. "10.0.0.5/24" becomes "10.0.0.0/24".
+     */
     ip: string;
     /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
@@ -41,7 +45,11 @@ export interface AddAddressOptions {
 
 /** Options for removing a single address. */
 export interface RemoveAddressOptions {
-    /** IPv4/IPv6 address or CIDR to remove (must match exactly as added). */
+    /**
+     * IPv4/IPv6 address or CIDR to remove (must match exactly as added).
+     * Misaligned CIDR (host bits set) is auto-normalized to the network address,
+     * e.g. "10.0.0.5/24" becomes "10.0.0.0/24".
+     */
     ip: string;
     /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
@@ -49,7 +57,7 @@ export interface RemoveAddressOptions {
 
 /** Options for bulk adding addresses. */
 export interface AddAddressesOptions {
-    /** Array of IPv4/IPv6 addresses or CIDRs. */
+    /** Array of IPv4/IPv6 addresses or CIDRs. Misaligned CIDR is auto-normalized. */
     ips: string[];
     /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;
@@ -59,7 +67,7 @@ export interface AddAddressesOptions {
 
 /** Options for bulk removing addresses. */
 export interface RemoveAddressesOptions {
-    /** Array of IPv4/IPv6 addresses or CIDRs to remove. */
+    /** Array of IPv4/IPv6 addresses or CIDRs to remove. Misaligned CIDR is auto-normalized. */
     ips: string[];
     /** Target set name (must match one from constructor's ingressAddrSets or egressAddrSets). */
     set: string;

@@ -204,8 +204,10 @@ describe('NftManager method validation', { skip: !canCreateContext }, () => {
         assert.ok(p instanceof Promise);
     });
 
-    it('should throw on CIDR with host bits set', () => {
-        assert.throws(() => nft.addAddress({ ip: '192.168.1.1/24', set: 'blacklist' }));
+    it('should accept CIDR with host bits and normalize', () => {
+        const p = nft.addAddress({ ip: '192.168.1.1/24', set: 'blacklist' });
+        p.catch(() => {});
+        assert.ok(p instanceof Promise);
     });
 
     it('should throw on invalid CIDR prefix /33', () => {
@@ -584,6 +586,37 @@ describe('NftManager integration (CIDR)', { skip: !canCreateContext }, () => {
         });
         await nft.removeAddresses({
             ips: ['10.5.0.0/16', '2001:db8:5::/48'],
+            set: 'blacklist'
+        });
+    });
+
+    it('should auto-normalize misaligned IPv4 /15', async () => {
+        await nft.addAddress({ ip: '100.65.0.0/15', set: 'blacklist', timeout: 60 });
+        await nft.removeAddress({ ip: '100.65.0.0/15', set: 'blacklist' });
+    });
+
+    it('should round-trip misaligned and normalized form for the same network', async () => {
+        await nft.addAddress({ ip: '100.65.0.0/15', set: 'blacklist', timeout: 60 });
+        await nft.removeAddress({ ip: '100.64.0.0/15', set: 'blacklist' });
+    });
+
+    it('should auto-normalize misaligned IPv4 /24', async () => {
+        await nft.addAddress({ ip: '10.0.0.5/24', set: 'blacklist', timeout: 60 });
+        await nft.removeAddress({ ip: '10.0.0.0/24', set: 'blacklist' });
+    });
+
+    it('should auto-normalize misaligned IPv6 /48', async () => {
+        await nft.addAddress({ ip: '2001:db8:1:1::/48', set: 'blacklist', timeout: 60 });
+        await nft.removeAddress({ ip: '2001:db8:1::/48', set: 'blacklist' });
+    });
+
+    it('should bulk add mix of aligned and misaligned CIDRs', async () => {
+        await nft.addAddresses({
+            ips: ['10.10.0.0/8', '172.31.5.5/12', '2001:db8:abcd::/40'],
+            set: 'blacklist', timeout: 60
+        });
+        await nft.removeAddresses({
+            ips: ['10.0.0.0/8', '172.16.0.0/12', '2001:db8:abc0::/40'],
             set: 'blacklist'
         });
     });

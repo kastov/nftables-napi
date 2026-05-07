@@ -22,11 +22,17 @@ struct CidrAddr {
 };
 
 // Parse IP string or CIDR notation. Accepts:
-//   "1.2.3.4"       -> CidrAddr{network=1.2.3.4, end=1.2.3.5}
-//   "10.0.0.0/8"    -> CidrAddr{network=10.0.0.0, end=11.0.0.0}
-//   "2001:db8::/32" -> CidrAddr{network=2001:db8::, end=2001:db9::}
+//   "1.2.3.4"          -> CidrAddr{network=1.2.3.4, end=1.2.3.5}
+//   "10.0.0.0/8"       -> CidrAddr{network=10.0.0.0, end=11.0.0.0}
+//   "2001:db8::/32"    -> CidrAddr{network=2001:db8::, end=2001:db9::}
+//   "198.19.0.0/15"    -> CidrAddr{network=198.18.0.0, end=198.20.0.0}
+//                         (host bits silently masked off — see below)
+//
+// Misaligned CIDR (host bits set) is auto-normalized: host bits are
+// masked off to obtain the network address. Matches `ip route` and
+// Python ipaddress.ip_network(strict=False). Rejects only:
+// /0 (too dangerous), prefix > family bits, malformed input.
 // Returns CidrAddr with network.family=Invalid on failure.
-// Rejects: host bits set (192.168.1.1/24), prefix > 32/128, /0 (too dangerous).
 [[nodiscard]] CidrAddr parse_ip_or_cidr(const std::string& input);
 
 struct PortVal {

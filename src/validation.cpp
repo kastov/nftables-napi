@@ -155,24 +155,19 @@ CidrAddr parse_ip_or_cidr(const std::string& input) {
 
     auto prefix_len = static_cast<uint8_t>(prefix);
 
-    // Verify host bits are zero
+    // Mask off host bits silently — input like "10.0.0.5/24" becomes
+    // "10.0.0.0/24", matching `ip route` and Python ipaddress(strict=False).
     uint32_t full_bytes = prefix_len / 8;
     uint32_t remainder_bits = prefix_len % 8;
 
-    // Check boundary byte: host bits must be zero
     if (remainder_bits > 0 && full_bytes < ip.len) {
-        uint8_t mask = static_cast<uint8_t>(0xFF >> remainder_bits);
-        if ((ip.bytes[full_bytes] & mask) != 0) {
-            return result; // host bits set in boundary byte
-        }
+        uint8_t mask = static_cast<uint8_t>(0xFF << (8 - remainder_bits));
+        ip.bytes[full_bytes] &= mask;
     }
 
-    // Check all bytes after the prefix boundary must be zero
-    uint32_t start_check = full_bytes + (remainder_bits > 0 ? 1 : 0);
-    for (uint32_t i = start_check; i < ip.len; ++i) {
-        if (ip.bytes[i] != 0) {
-            return result; // host bits set
-        }
+    uint32_t start_zero = full_bytes + (remainder_bits > 0 ? 1 : 0);
+    for (uint32_t i = start_zero; i < ip.len; ++i) {
+        ip.bytes[i] = 0;
     }
 
     result.network = ip;
