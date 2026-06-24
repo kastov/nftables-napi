@@ -1,0 +1,25 @@
+FROM node:24-trixie-slim AS builder
+
+# glibc build -> links against libnftnl.so.11 (same soname as musl; differs only
+# by libc). Built on trixie (glibc 2.41); targets trixie and newer glibc hosts.
+# glibc is forward-compatible only, so this binary won't run on older releases
+# (bookworm / Ubuntu 22.04) — those are out of scope and compile from source.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 make g++ pkg-config libnftnl-dev libmnl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /pkg
+
+COPY package.json binding.gyp ./
+COPY src/ src/
+
+RUN npm install --ignore-scripts
+# --tag-libc names the output nftables-napi.glibc.node so node-gyp-build can
+# pick the right binary for the host libc at runtime.
+RUN npx prebuildify --napi --strip --tag-libc=glibc
+
+# Prebuilds are now in /pkg/prebuilds/
+
+FROM scratch
+COPY --from=builder /pkg/prebuilds /prebuilds

@@ -14,12 +14,23 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        platform: [linux/amd64, linux/arm64]
         include:
           - platform: linux/amd64
             arch: x64
+            libc: musl
+            dockerfile: Dockerfile
           - platform: linux/arm64
             arch: arm64
+            libc: musl
+            dockerfile: Dockerfile
+          - platform: linux/amd64
+            arch: x64
+            libc: glibc
+            dockerfile: Dockerfile.debian
+          - platform: linux/arm64
+            arch: arm64
+            libc: glibc
+            dockerfile: Dockerfile.debian
     steps:
       - uses: actions/checkout@v4
 
@@ -28,17 +39,17 @@ jobs:
       - uses: docker/setup-qemu-action@v3
         if: matrix.arch == 'arm64'
 
-      - name: Build prebuild (${{ matrix.arch }})
+      - name: Build ${{ matrix.libc }} prebuild (${{ matrix.arch }})
         run: |
           docker buildx build \
             --platform ${{ matrix.platform }} \
             --output type=local,dest=./out \
-            -f ./Dockerfile \
+            -f ./${{ matrix.dockerfile }} \
             .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: prebuild-linux-${{ matrix.arch }}
+          name: prebuild-linux-${{ matrix.arch }}-${{ matrix.libc }}
           path: out/prebuilds/
 
   release:
@@ -64,10 +75,18 @@ jobs:
       - name: Merge prebuilds
         run: |
           mkdir -p prebuilds
-          cp -r prebuilds-tmp/prebuild-linux-x64/* prebuilds/
-          cp -r prebuilds-tmp/prebuild-linux-arm64/* prebuilds/
+          # Artifacts each hold linux-<arch>/nftables-napi.<libc>.node; tags
+          # differ so directories merge without clobbering.
+          cp -r prebuilds-tmp/*/* prebuilds/
           echo "Prebuilds:"
           find prebuilds -type f
+          for f in \
+            linux-x64/nftables-napi.musl.node \
+            linux-x64/nftables-napi.glibc.node \
+            linux-arm64/nftables-napi.musl.node \
+            linux-arm64/nftables-napi.glibc.node; do
+            test -f "prebuilds/$f" || { echo "Missing prebuild: $f"; exit 1; }
+          done
 
       - run: npm install --ignore-scripts
 

@@ -10,22 +10,29 @@ Requires Linux kernel ≥ 5.7 with `CAP_NET_ADMIN` or root.
 npm install nftables-napi
 ```
 
-Prebuilt binaries are included for `linux-x64` and `linux-arm64`. If a prebuild is not available for your platform, the package will compile from source (requires `libnftnl-dev`, `libmnl-dev`, `pkg-config`, and a C++20 compiler).
+Prebuilt binaries are included for `linux-x64` and `linux-arm64`, in two libc flavors. Both link against `libnftnl.so.11` — that soname is the same on every distro (libnftnl has kept it from 1.1.x through 1.3.x); the flavors differ only by libc:
+
+| Flavor  | Built on        | Runtime               | Typical hosts            |
+| ------- | --------------- | --------------------- | ------------------------ |
+| `musl`  | Alpine          | musl + `libnftnl.so.11` | Alpine                 |
+| `glibc` | Debian trixie   | glibc + `libnftnl.so.11` | Debian 13+ / Ubuntu 24.04+ |
+
+The loader probes the bundled binaries and uses the first one that loads on the host, so the right flavor is picked automatically. The glibc build is compiled on trixie (glibc 2.41) and targets trixie and newer. On an older glibc (Debian 12 / Ubuntu 22.04) no prebuild is compatible and the package compiles from source (requires `libnftnl-dev`, `libmnl-dev`, `pkg-config`, and a C++20 compiler).
 
 ### Runtime dependencies
 
 The module dynamically links against `libnftnl` and `libmnl`. These must be present in the runtime environment. The `nft` CLI is **not** required — the module talks to the kernel directly via netlink.
 
-**Alpine:**
+**Alpine** (uses the `musl` prebuild):
 
 ```dockerfile
 RUN apk add --no-cache libnftnl libmnl
 ```
 
-**Debian/Ubuntu:**
+**Debian / Ubuntu** (uses the `glibc` prebuild):
 
 ```dockerfile
-RUN apt-get update && apt-get install -y libnftnl13 libmnl0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libnftnl11 libmnl0 && rm -rf /var/lib/apt/lists/*
 ```
 
 ## Usage
