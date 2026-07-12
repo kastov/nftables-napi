@@ -135,6 +135,22 @@ describe('NftManager constructor validation', () => {
         const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'] });
         assert.ok(mgr);
     });
+
+    it('should accept perElementCounters=false', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({
+            tableName: 'test',
+            ingressAddrSets: ['bl'],
+            perElementCounters: false,
+        });
+        assert.ok(mgr);
+    });
+
+    it('should reject a non-boolean perElementCounters value', { skip: !canCreateContext }, () => {
+        assert.throws(
+            () => new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], perElementCounters: 'false' }),
+            { name: 'TypeError' },
+        );
+    });
 });
 
 // ─── Method validation ──────────────────────────────────────────────────────

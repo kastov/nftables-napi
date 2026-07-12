@@ -91,31 +91,42 @@ NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent)
     int fd = mnl_socket_get_fd(nl_);
     char recv_buf[RECV_BUF_SIZE];
 
-    // Match nft CLI pattern: select() with zero timeout to check for data,
-    // then recv+process in a loop. Continue on errors to collect all ACKs.
+    // Wait for the first ACK, then drain the remaining responses without
+    // blocking. A zero-timeout first poll can otherwise report success before
+    // the kernel posts any ACKs.
     fd_set readfds;
     struct timeval tv;
+    bool got_response = false;
 
     for (;;) {
         FD_ZERO(&readfds);
         FD_SET(fd, &readfds);
-        tv = {0, 0};
+        if (got_response)
+            tv = {0, 0};
+        else
+            tv = {2, 0};
 
         int sel = select(fd + 1, &readfds, nullptr, nullptr, &tv);
-        if (sel <= 0)
+        if (sel < 0)
+            return {false, std::string("select: ") + strerror(errno)};
+        if (sel == 0) {
+            if (!got_response)
+                return {false, "timed out waiting for netlink ACK"};
             break;
+        }
 
         ssize_t ret = mnl_socket_recvfrom(nl_, recv_buf, sizeof(recv_buf));
         if (ret < 0)
             return {false, std::string("mnl_socket_recvfrom: ") + strerror(errno)};
 
+        got_response = true;
         mnl_cb_run2(recv_buf, static_cast<size_t>(ret), 0, portid_,
                      nullptr, &ctx, cb_ctl, NLMSG_ERROR + 1);
         // Continue on error — collect all acknowledgments
     }
 
     if (ctx.has_error)
-        return {false, std::string("batch error: ") + strerror(ctx.error_code)};
+        return {false, std::string("batch error: ") + strerror(ctx.error_code), ctx.error_code};
 
     return {true, ""};
 }

@@ -2,7 +2,11 @@
 
 Native Node.js binding for nftables via libnftnl + libmnl. Manages IPv4/IPv6 firewall tables with dynamic IP sets, port blocking, named counters, and timeout support through direct netlink communication — no shell commands, no `nft` CLI.
 
-Requires Linux kernel ≥ 5.7 with `CAP_NET_ADMIN` or root.
+Requires Linux with `CAP_NET_ADMIN` or root.
+
+Per-element counters require Linux kernel ≥ 5.7. On kernels that do not support
+them, `createTable()` automatically retries without per-element counters;
+blocking, timeouts, and named counters remain available.
 
 ## Install
 
@@ -92,6 +96,7 @@ await nft.deleteTable();
 | `ingressAddrSets` | `string[]` | Yes | Input/forward IP set names (≥1). Block by **source** address on input and forward chains. Rules: log + named counter + drop. IPv6 sets auto-append `'6'`. |
 | `egressAddrSets` | `string[]` | No | Output IP set names. Block by **destination** address on output chain. Rules: named counter + drop (no log). IPv6 sets auto-append `'6'`. |
 | `egressPortSets` | `string[]` | No | Output port set names. Block by **destination port** (TCP/UDP) on output chain using concatenated `inet_proto . inet_service` sets. Ports are added to both IPv4 and IPv6 tables. IPv6 sets auto-append `'6'`. |
+| `perElementCounters` | `boolean` | No | Add packet/byte counters to every set element. Defaults to `true` and requires kernel ≥ 5.7. `createTable()` automatically retries without them when unsupported. Set `false` to disable them proactively. |
 
 ### Methods
 

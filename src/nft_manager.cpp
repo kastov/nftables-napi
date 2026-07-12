@@ -326,8 +326,24 @@ NftManager::NftManager(const Napi::CallbackInfo& info)
 
     std::string table_name = opts.Get("tableName").As<Napi::String>().Utf8Value();
 
+    bool per_element_counters = true;
+    if (opts.Has("perElementCounters") && !opts.Get("perElementCounters").IsUndefined()) {
+        Napi::Value value = opts.Get("perElementCounters");
+        if (!value.IsBoolean()) {
+            Napi::TypeError::New(env, "NftManager: 'perElementCounters' must be a boolean")
+                .ThrowAsJavaScriptException();
+            return;
+        }
+        per_element_counters = value.As<Napi::Boolean>().Value();
+    }
+
     config_ = std::make_shared<const nft::NftConfig>(
-        nft::NftConfig::from_names(table_name, in_sets, out_sets, out_port_sets));
+        nft::NftConfig::from_names(
+            table_name,
+            in_sets,
+            out_sets,
+            out_port_sets,
+            per_element_counters));
 
     sock_ = std::make_shared<NlSocket>();
 

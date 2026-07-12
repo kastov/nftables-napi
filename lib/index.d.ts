@@ -27,6 +27,12 @@ export interface NftManagerOptions {
      * IPv6 sets auto-append '6'.
      */
     egressPortSets?: string[];
+    /**
+     * Creates a counter for each set element when true. Requires Linux kernel
+     * 5.7 or newer. If unsupported, table creation retries without them while
+     * named counters remain enabled. Defaults to true.
+     */
+    perElementCounters?: boolean;
 }
 
 /** Options for adding a single address. */
@@ -138,7 +144,7 @@ export class NftManager {
      * - Input chain with log + counter + drop rules (for ingressAddrSets)
      * - Forward chain with log + counter + drop rules (for ingressAddrSets)
      * - Output chain with counter + drop rules (for egressAddrSets and egressPortSets, no log)
-     * - Per-element counters on all sets
+     * - Per-element counters on all sets when supported and enabled
      *
      * @throws {Error} if nftables operation fails
      */
