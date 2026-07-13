@@ -1,0 +1,96 @@
+name: Build RouterOS Package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prebuild:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: x64
+          - platform: linux/arm64
+            arch: arm64
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-qemu-action@v4
+        with:
+          cache-image: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build glibc prebuild for ${{ matrix.arch }}
+        run: |
+          docker buildx build \
+            --platform ${{ matrix.platform }} \
+            --output type=local,dest=./out \
+            -f ./Dockerfile.debian \
+            .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: routeros-prebuild-${{ matrix.arch }}
+          path: out/prebuilds/
+
+  release:
+    needs: prebuild
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: routeros-prebuild-*
+          path: prebuilds-tmp/
+
+      - name: Create RouterOS npm package
+        id: package
+        run: |
+          set -euo pipefail
+
+          version=$(node -p "require('./package.json').version")
+          case "$version" in *-ros) ;; *) echo "Package version must end in -ros"; exit 1 ;; esac
+
+          mkdir -p prebuilds release
+          cp -r prebuilds-tmp/*/* prebuilds/
+          test -f prebuilds/linux-x64/nftables-napi.glibc.node
+          test -f prebuilds/linux-arm64/nftables-napi.glibc.node
+
+          npm pack --pack-destination release
+          archive="release/nftables-napi-${version}.tgz"
+          test -f "$archive"
+          sha256sum "$archive" > "${archive}.sha256"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ steps.package.outputs.version }}
+          name: nftables-napi ${{ steps.package.outputs.version }} for RouterOS
+          generate_release_notes: true
+          files: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.archive }}.sha256
+
+      - name: Update VERSIONS
+        run: |
+          echo "nftables_napi=${{ steps.package.outputs.version }}" > VERSIONS
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add VERSIONS
+          git commit -m "Auto-update: RouterOS package version" || exit 0
+          git push

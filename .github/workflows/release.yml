@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   prebuild:
+    if: ${{ !endsWith(github.ref_name, '-ros') }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
