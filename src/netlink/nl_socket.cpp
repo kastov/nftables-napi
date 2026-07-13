@@ -107,6 +107,10 @@ NlResult NlSocket::send_batch(struct mnl_nlmsg_batch* batch, bool ignore_enoent)
             tv = {2, 0};
 
         int sel = select(fd + 1, &readfds, nullptr, nullptr, &tv);
+        // A signal may interrupt select() before any netlink response arrives.
+        // Retry instead of reporting a spurious batch failure.
+        if (sel < 0 && errno == EINTR)
+            continue;
         if (sel < 0)
             return {false, std::string("select: ") + strerror(errno)};
         if (sel == 0) {
