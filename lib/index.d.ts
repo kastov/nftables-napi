@@ -11,6 +11,7 @@ export interface NftManagerOptions {
     /**
      * Ingress IP set names (≥1 required). Block by source address.
      * Rules: log prefix "<setName>: " + named counter + drop on input and forward chains.
+     * The log prefix is omitted entirely when `logging` is false.
      * IPv6 sets auto-append '6'.
      */
     ingressAddrSets: string[];
@@ -27,6 +28,21 @@ export interface NftManagerOptions {
      * IPv6 sets auto-append '6'.
      */
     egressPortSets?: string[];
+    /**
+     * Emit a kernel log message for ingress drops. Default: `true`.
+     *
+     * When `false`, the ingress rules are built without the log expression at all
+     * (not "log at a silent level"), so dropped packets cost nothing extra in the
+     * kernel and produce no dmesg/journald output. Rules become:
+     * named counter + drop.
+     *
+     * Only affects `ingressAddrSets` — `egressAddrSets` and `egressPortSets`
+     * never log regardless of this flag.
+     *
+     * Applied at table creation time: change it and call `createTable()` again
+     * for it to take effect.
+     */
+    logging?: boolean;
 }
 
 /** Options for adding a single address. */
@@ -135,8 +151,8 @@ export class NftManager {
      * Creates:
      * - Named counter "processed" (global traffic counter per chain)
      * - Named counter per set (blocked traffic counter)
-     * - Input chain with log + counter + drop rules (for ingressAddrSets)
-     * - Forward chain with log + counter + drop rules (for ingressAddrSets)
+     * - Input chain with log + counter + drop rules (for ingressAddrSets; log omitted when `logging` is false)
+     * - Forward chain with log + counter + drop rules (for ingressAddrSets; log omitted when `logging` is false)
      * - Output chain with counter + drop rules (for egressAddrSets and egressPortSets, no log)
      * - Per-element counters on all sets
      *

@@ -71,14 +71,18 @@ async function createManager() {
   const egressPortSetsRaw = await prompt('  egressPortSets (comma-separated, empty = none): ');
   const egressPortSets = egressPortSetsRaw ? egressPortSetsRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined;
 
-  const opts = { tableName, ingressAddrSets };
+  const loggingRaw = await prompt('  logging (y/n) [y]: ');
+  const logging = !loggingRaw || loggingRaw.toLowerCase().startsWith('y');
+
+  const opts = { tableName, ingressAddrSets, logging };
   if (egressAddrSets) opts.egressAddrSets = egressAddrSets;
   if (egressPortSets) opts.egressPortSets = egressPortSets;
 
   nft = new NftManager(opts);
   console.log(`  -> NftManager created (table=${tableName}, ingressAddrSets=[${ingressAddrSets}]` +
     (egressAddrSets ? `, egressAddrSets=[${egressAddrSets}]` : '') +
-    (egressPortSets ? `, egressPortSets=[${egressPortSets}]` : '') + ')');
+    (egressPortSets ? `, egressPortSets=[${egressPortSets}]` : '') +
+    `, logging=${logging})`);
 }
 
 async function run(fn) {

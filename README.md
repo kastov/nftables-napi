@@ -49,6 +49,9 @@ const nft = new NftManager({
 
 await nft.createTable();
 
+// Same, but without any kernel logging of ingress drops:
+// new NftManager({ tableName: "myfw", ingressAddrSets: ["blacklist"], logging: false })
+
 // ── IP blocking (input/forward) ──
 
 await nft.addAddress({ ip: "1.2.3.4", set: "blacklist", timeout: 1800 });
@@ -89,9 +92,10 @@ await nft.deleteTable();
 | Option | Type | Required | Description |
 | --- | --- | --- | --- |
 | `tableName` | `string` | Yes | Base table name. IPv6 table auto-appends `'6'`. |
-| `ingressAddrSets` | `string[]` | Yes | Input/forward IP set names (≥1). Block by **source** address on input and forward chains. Rules: log + named counter + drop. IPv6 sets auto-append `'6'`. |
+| `ingressAddrSets` | `string[]` | Yes | Input/forward IP set names (≥1). Block by **source** address on input and forward chains. Rules: log + named counter + drop (log omitted when `logging: false`). IPv6 sets auto-append `'6'`. |
 | `egressAddrSets` | `string[]` | No | Output IP set names. Block by **destination** address on output chain. Rules: named counter + drop (no log). IPv6 sets auto-append `'6'`. |
 | `egressPortSets` | `string[]` | No | Output port set names. Block by **destination port** (TCP/UDP) on output chain using concatenated `inet_proto . inet_service` sets. Ports are added to both IPv4 and IPv6 tables. IPv6 sets auto-append `'6'`. |
+| `logging` | `boolean` | No | Log ingress drops. Default `true`. Set to `false` to build the tables without any log expression — see [Disabling logging](#disabling-logging). |
 
 ### Methods
 
@@ -176,6 +180,38 @@ table ip myfw {
 ```
 
 IPv6 table (`myfw6`) mirrors the same structure with `ipv6_addr` sets and corresponding offsets.
+
+### Disabling logging
+
+Ingress drops are logged by default with the prefix `"<setName>: "`. On a busy host this can flood
+`dmesg`/journald and cost measurable CPU. Pass `logging: false` to build the tables without it:
+
+```js
+const nft = new NftManager({
+  tableName: "myfw",
+  ingressAddrSets: ["bl"],
+  logging: false,
+});
+
+await nft.createTable();
+```
+
+The `log` expression is then not emitted into the rules at all — this is not "log at a silent level",
+the kernel does no logging work whatsoever:
+
+```
+    chain input {
+        type filter hook input priority -10; policy accept;
+        counter name "processed"
+        ip saddr @bl counter name "bl" drop
+    }
+```
+
+Per-set and named counters are unaffected, so blocked-traffic accounting keeps working. The flag only
+affects `ingressAddrSets`; `egressAddrSets` and `egressPortSets` never logged in the first place.
+
+The flag is read when the rules are built, i.e. by `createTable()` — construct the manager with the
+desired value and call `createTable()` for it to take effect.
 
 ## Kernel compatibility
 

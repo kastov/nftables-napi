@@ -1,6 +1,7 @@
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const { NftManager } = require('../lib/index.js');
@@ -133,6 +134,30 @@ describe('NftManager constructor validation', () => {
 
     it('should accept undefined egressAddrSets and egressPortSets', { skip: !canCreateContext }, () => {
         const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'] });
+        assert.ok(mgr);
+    });
+
+    // logging validation
+    it('should throw with non-boolean logging', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], logging: 'false' }), { name: 'TypeError' });
+    });
+
+    it('should throw with numeric logging', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], logging: 0 }), { name: 'TypeError' });
+    });
+
+    it('should accept logging: false', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], logging: false });
+        assert.ok(mgr);
+    });
+
+    it('should accept logging: true', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], logging: true });
+        assert.ok(mgr);
+    });
+
+    it('should accept logging: undefined (defaults to true)', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], logging: undefined });
         assert.ok(mgr);
     });
 });
@@ -797,5 +822,68 @@ describe('NftManager integration (full config)', { skip: !canCreateContext }, ()
         await full.removeAddress({ ip: '10.0.0.2', set: 'out_blocked' });
         await full.removePort({ port: 25, set: 'out_ports', protocol: 'tcp' });
         await full.deleteTable();
+    });
+});
+
+// ─── Integration: logging flag ──────────────────────────────────────────────
+
+// Reads back the installed ruleset with the `nft` CLI when it is available.
+// The module itself never needs it, so the assertions are skipped when it is not
+// installed — table creation is still exercised in that case.
+function listRuleset(table) {
+    try {
+        return execFileSync('nft', ['list', 'table', 'ip', table], { encoding: 'utf8' });
+    } catch {
+        return null;
+    }
+}
+
+describe('NftManager integration (logging flag)', { skip: !canCreateContext }, () => {
+    let quiet;
+    let loud;
+
+    after(async () => {
+        try { await quiet?.deleteTable(); } catch { /* ignore */ }
+        try { await loud?.deleteTable(); } catch { /* ignore */ }
+    });
+
+    it('should create tables with logging disabled', async () => {
+        quiet = new NftManager({ tableName: 'logoff', ingressAddrSets: ['ban'], logging: false });
+        await quiet.createTable();
+    });
+
+    it('should emit no log expression when logging is false', () => {
+        const ruleset = listRuleset('logoff');
+        if (ruleset === null) return; // nft CLI unavailable
+        assert.doesNotMatch(ruleset, /\blog\b/);
+        // The rest of the rule must survive: lookup + named counter + drop.
+        assert.match(ruleset, /ip saddr @ban counter name "ban" drop/);
+    });
+
+    it('should still account blocked traffic with logging disabled', async () => {
+        await quiet.addAddress({ ip: '10.99.0.1', set: 'ban', timeout: 60 });
+        await quiet.removeAddress({ ip: '10.99.0.1', set: 'ban' });
+        const ruleset = listRuleset('logoff');
+        if (ruleset === null) return;
+        // `nft` prints the named-counter declaration unquoted, and the rule's
+        // reference to it quoted.
+        assert.match(ruleset, /counter ban \{/);
+        assert.match(ruleset, /counter name "ban"/);
+    });
+
+    it('should create tables with logging enabled (default)', async () => {
+        loud = new NftManager({ tableName: 'logon', ingressAddrSets: ['ban'] });
+        await loud.createTable();
+    });
+
+    it('should emit the log expression by default', () => {
+        const ruleset = listRuleset('logon');
+        if (ruleset === null) return; // nft CLI unavailable
+        assert.match(ruleset, /log prefix "ban: "/);
+    });
+
+    it('should delete both tables', async () => {
+        await quiet.deleteTable();
+        await loud.deleteTable();
     });
 });

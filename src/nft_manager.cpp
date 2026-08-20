@@ -324,10 +324,25 @@ NftManager::NftManager(const Napi::CallbackInfo& info)
         }
     }
 
+    // logging — optional boolean, defaults to true (log ingress drops).
+    // When false, ingress rules are built without the log expression at all.
+    bool logging = true;
+    if (opts.Has("logging")) {
+        Napi::Value lv = opts.Get("logging");
+        if (!lv.IsUndefined() && !lv.IsNull()) {
+            if (!lv.IsBoolean()) {
+                Napi::TypeError::New(env, "NftManager: 'logging' must be a boolean")
+                    .ThrowAsJavaScriptException();
+                return;
+            }
+            logging = lv.As<Napi::Boolean>().Value();
+        }
+    }
+
     std::string table_name = opts.Get("tableName").As<Napi::String>().Utf8Value();
 
     config_ = std::make_shared<const nft::NftConfig>(
-        nft::NftConfig::from_names(table_name, in_sets, out_sets, out_port_sets));
+        nft::NftConfig::from_names(table_name, in_sets, out_sets, out_port_sets, logging));
 
     sock_ = std::make_shared<NlSocket>();
 

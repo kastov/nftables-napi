@@ -181,15 +181,19 @@ static bool add_rule_counter_ref(NlBatch& batch, uint32_t family, const char* ta
     });
 }
 
-// InIP rule: payload(saddr) + lookup(set) + log(prefix) + counter_ref(set_name) + drop
+// InIP rule: payload(saddr) + lookup(set) + [log(prefix)] + counter_ref(set_name) + drop
+// A null/empty log_prefix omits the log expression entirely (no kernel-side cost),
+// mirroring how the OutIP/OutPort rules are built.
 static bool add_rule_in_ip(NlBatch& batch, uint32_t family, const char* table,
                            const char* chain, const char* set_name,
                            uint32_t payload_offset, uint32_t addr_len,
                            const char* log_prefix, const char* counter_name) {
     return add_rule_with(batch, family, table, chain, [&](nftnl_rule* r) {
+        // The log expression must precede the objref/verdict expressions: anything
+        // after the drop verdict is never reached.
         return add_expr_payload(r, NFT_PAYLOAD_NETWORK_HEADER, NFT_REG_1, payload_offset, addr_len)
             && add_expr_lookup(r, set_name, NFT_REG_1)
-            && add_expr_log(r, log_prefix)
+            && (!log_prefix || *log_prefix == '\0' || add_expr_log(r, log_prefix))
             && add_expr_counter_ref(r, counter_name)
             && add_expr_drop(r);
     });
