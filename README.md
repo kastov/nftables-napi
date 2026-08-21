@@ -96,6 +96,7 @@ await nft.deleteTable();
 | `egressAddrSets` | `string[]` | No | Output IP set names. Block by **destination** address on output chain. Rules: named counter + drop (no log). IPv6 sets auto-append `'6'`. |
 | `egressPortSets` | `string[]` | No | Output port set names. Block by **destination port** (TCP/UDP) on output chain using concatenated `inet_proto . inet_service` sets. Ports are added to both IPv4 and IPv6 tables. IPv6 sets auto-append `'6'`. |
 | `logging` | `boolean` | No | Log ingress drops. Default `true`. Set to `false` to build the tables without any log expression — see [Disabling logging](#disabling-logging). |
+| `acceptReplyTraffic` | `boolean` | No | Accept reply traffic before the ingress sets are consulted. Default `true`. See [Reply traffic and conntrack](#reply-traffic-and-conntrack). |
 
 ### Methods
 
@@ -162,12 +163,14 @@ table ip myfw {
     chain input {
         type filter hook input priority -10; policy accept;
         counter name "processed"
+        ct direction reply accept
         ip saddr @bl log prefix "bl: " counter name "bl" drop
     }
 
     chain forward {
         type filter hook forward priority -10; policy accept;
         counter name "processed"
+        ct direction reply accept
         ip saddr @bl log prefix "bl: " counter name "bl" drop
     }
 
@@ -180,6 +183,60 @@ table ip myfw {
 ```
 
 IPv6 table (`myfw6`) mirrors the same structure with `ipv6_addr` sets and corresponding offsets.
+
+### Reply traffic and conntrack
+
+The ingress rules match `ip saddr` — the packet's source, which in the input chain is the
+remote peer of **every** inbound packet, including the SYN-ACK answering a connection this host
+opened itself. A stateless `ip saddr @set drop` therefore cannot tell "someone is connecting to
+me" from "the site I just requested is answering".
+
+If an ingress set contains a network the host itself talks to, outbound connections to it break:
+the SYN leaves through the output chain, and the reply is dropped on the way back. The symptom is
+a connection that hangs and times out, while the set's counter fills up — with your own reply
+packets, not with blocked connection attempts.
+
+`createTable()` therefore emits, at the top of the input and forward chains:
+
+```
+counter name "processed"
+ct direction reply accept
+ip saddr @bl log prefix "bl: " counter name "bl" drop
+```
+
+The test is conntrack **direction**, not state. Direction is what separates the two cases: for a
+connection this host opened, inbound packets travel in the reply direction; for a connection
+opened to this host, they travel in the original direction. State cannot express the difference —
+`NF_CT_STATE_BIT()` reduces `ctinfo` modulo `IP_CT_IS_REPLY`, so `IP_CT_ESTABLISHED` and
+`IP_CT_ESTABLISHED_REPLY` land on the same bit and the direction is gone before a rule can look
+at it.
+
+Consequently the sets keep full authority over connections opened to this host: adding an address
+drops its packets immediately, established sessions included, exactly as it did before this rule
+existed. Only replies to locally-originated connections bypass the sets. The `processed` counter
+still sees every packet because it precedes the accept, and the output chain is untouched.
+
+Two things worth knowing:
+
+- **conntrack becomes a dependency.** The rule makes nftables pull in connection tracking for that
+  family, and `createTable()` fails if the kernel cannot provide it — and because the batch is
+  atomic, nothing at all is created in that case. On a host already running Docker this changes
+  nothing; conntrack is loaded for NAT anyway. On a bare host with a high connection rate,
+  `nf_conntrack_max` becomes a ceiling worth checking.
+- **Connections this host originated are not severed** when the peer's address is added to a set —
+  their replies are accepted before the set is consulted. Drop the conntrack entries
+  (`conntrack -D -d <ip>`) alongside `addAddress()` if that matters.
+
+Pass `acceptReplyTraffic: false` to build the chains without it and get the previous, purely
+stateless behaviour:
+
+```js
+const nft = new NftManager({
+  tableName: "myfw",
+  ingressAddrSets: ["bl"],
+  acceptReplyTraffic: false,
+});
+```
 
 ### Disabling logging
 

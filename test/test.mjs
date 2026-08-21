@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 
+// The module never shells out to nft; these tests only use it to read the
+// installed ruleset back. Probe once so a *failing* nft is a test failure
+// rather than being indistinguishable from a missing one.
+let hasNft = false;
+try {
+    execFileSync('nft', ['--version'], { stdio: 'ignore' });
+    hasNft = true;
+} catch { /* nft CLI not installed */ }
+
 const require = createRequire(import.meta.url);
 const { NftManager } = require('../lib/index.js');
 
@@ -158,6 +167,25 @@ describe('NftManager constructor validation', () => {
 
     it('should accept logging: undefined (defaults to true)', { skip: !canCreateContext }, () => {
         const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], logging: undefined });
+        assert.ok(mgr);
+    });
+
+    // acceptReplyTraffic validation
+    it('should throw with non-boolean acceptReplyTraffic', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], acceptReplyTraffic: 'no' }), { name: 'TypeError' });
+    });
+
+    it('should throw with numeric acceptReplyTraffic', { skip: !canCreateContext }, () => {
+        assert.throws(() => new NftManager({ tableName: 't', ingressAddrSets: ['bl'], acceptReplyTraffic: 1 }), { name: 'TypeError' });
+    });
+
+    it('should accept acceptReplyTraffic: false', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], acceptReplyTraffic: false });
+        assert.ok(mgr);
+    });
+
+    it('should accept acceptReplyTraffic: undefined (defaults to true)', { skip: !canCreateContext }, () => {
+        const mgr = new NftManager({ tableName: 'test', ingressAddrSets: ['bl'], acceptReplyTraffic: undefined });
         assert.ok(mgr);
     });
 });
@@ -831,11 +859,7 @@ describe('NftManager integration (full config)', { skip: !canCreateContext }, ()
 // The module itself never needs it, so the assertions are skipped when it is not
 // installed — table creation is still exercised in that case.
 function listRuleset(table) {
-    try {
-        return execFileSync('nft', ['list', 'table', 'ip', table], { encoding: 'utf8' });
-    } catch {
-        return null;
-    }
+    return execFileSync('nft', ['list', 'table', 'ip', table], { encoding: 'utf8' });
 }
 
 describe('NftManager integration (logging flag)', { skip: !canCreateContext }, () => {
@@ -852,9 +876,8 @@ describe('NftManager integration (logging flag)', { skip: !canCreateContext }, (
         await quiet.createTable();
     });
 
-    it('should emit no log expression when logging is false', () => {
+    it('should emit no log expression when logging is false', { skip: !hasNft }, () => {
         const ruleset = listRuleset('logoff');
-        if (ruleset === null) return; // nft CLI unavailable
         assert.doesNotMatch(ruleset, /\blog\b/);
         // The rest of the rule must survive: lookup + named counter + drop.
         assert.match(ruleset, /ip saddr @ban counter name "ban" drop/);
@@ -863,8 +886,8 @@ describe('NftManager integration (logging flag)', { skip: !canCreateContext }, (
     it('should still account blocked traffic with logging disabled', async () => {
         await quiet.addAddress({ ip: '10.99.0.1', set: 'ban', timeout: 60 });
         await quiet.removeAddress({ ip: '10.99.0.1', set: 'ban' });
+        if (!hasNft) return;
         const ruleset = listRuleset('logoff');
-        if (ruleset === null) return;
         // `nft` prints the named-counter declaration unquoted, and the rule's
         // reference to it quoted.
         assert.match(ruleset, /counter ban \{/);
@@ -876,14 +899,96 @@ describe('NftManager integration (logging flag)', { skip: !canCreateContext }, (
         await loud.createTable();
     });
 
-    it('should emit the log expression by default', () => {
+    it('should emit the log expression by default', { skip: !hasNft }, () => {
         const ruleset = listRuleset('logon');
-        if (ruleset === null) return; // nft CLI unavailable
         assert.match(ruleset, /log prefix "ban: "/);
     });
 
     it('should delete both tables', async () => {
         await quiet.deleteTable();
         await loud.deleteTable();
+    });
+});
+
+// ─── Integration: conntrack accept rule ─────────────────────────────────────
+
+const CT_RULE = /ct direction reply accept/;
+// The state-based variant matches established traffic in *both* directions, so
+// it would stop a ban from cutting sessions opened to this host. Guard against
+// a regression back to it.
+const CT_STATE_RULE = /ct state/;
+
+function listChain(family, table, chain) {
+    return execFileSync('nft', ['list', 'chain', family, table, chain], { encoding: 'utf8' });
+}
+
+describe('NftManager integration (acceptReplyTraffic)', { skip: !canCreateContext }, () => {
+    let on;
+    let off;
+
+    after(async () => {
+        try { await on?.deleteTable(); } catch { /* ignore */ }
+        try { await off?.deleteTable(); } catch { /* ignore */ }
+    });
+
+    it('should create tables with the ct rule by default', async () => {
+        on = new NftManager({ tableName: 'cton', ingressAddrSets: ['bl'] });
+        await on.createTable();
+    });
+
+    it('should place the ct rule in input and forward of both families', { skip: !hasNft }, () => {
+        for (const [family, table] of [['ip', 'cton'], ['ip6', 'cton6']]) {
+            for (const chain of ['input', 'forward']) {
+                const out = listChain(family, table, chain);
+                assert.match(out, CT_RULE, `${family} ${table} ${chain}`);
+            }
+        }
+    });
+
+    it('should order it after the processed counter and before the set rule', { skip: !hasNft }, () => {
+        const out = listChain('ip', 'cton', 'input');
+        const iCounter = out.indexOf('counter name "processed"');
+        const iCt = out.search(CT_RULE);
+        const iSet = out.indexOf('@bl');
+        assert.ok(iCounter >= 0 && iCt >= 0 && iSet >= 0, 'all three rules present');
+        assert.ok(iCounter < iCt, 'processed counter comes first, so it still counts everything');
+        assert.ok(iCt < iSet, 'ct accept precedes the ingress set rule');
+    });
+
+    it('should match on direction, not state', { skip: !hasNft }, () => {
+        const out = listChain('ip', 'cton', 'input');
+        assert.match(out, CT_RULE);
+        assert.doesNotMatch(out, CT_STATE_RULE);
+    });
+
+    it('should not touch the output chain', { skip: !hasNft }, () => {
+        const out = listChain('ip', 'cton', 'output');
+        assert.doesNotMatch(out, CT_RULE);
+    });
+
+    it('should omit the rule entirely when acceptReplyTraffic is false', async () => {
+        off = new NftManager({ tableName: 'ctoff', ingressAddrSets: ['bl'], acceptReplyTraffic: false });
+        await off.createTable();
+        if (!hasNft) return;
+        for (const [family, table] of [['ip', 'ctoff'], ['ip6', 'ctoff6']]) {
+            for (const chain of ['input', 'forward']) {
+                const out = listChain(family, table, chain);
+                assert.doesNotMatch(out, CT_RULE, `${family} ${table} ${chain}`);
+                assert.match(out, /counter name "processed"/);
+            }
+        }
+    });
+
+    it('should still block by set with the ct rule present', async () => {
+        await on.addAddress({ ip: '10.77.0.1', set: 'bl' });
+        if (!hasNft) { await on.removeAddress({ ip: '10.77.0.1', set: 'bl' }); return; }
+        const out = listChain('ip', 'cton', 'input');
+        assert.match(out, /ip saddr @bl .*drop/);
+        await on.removeAddress({ ip: '10.77.0.1', set: 'bl' });
+    });
+
+    it('should delete both tables', async () => {
+        await on.deleteTable();
+        await off.deleteTable();
     });
 });

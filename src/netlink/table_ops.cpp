@@ -14,6 +14,7 @@ extern "C" {
 #include <libnftnl/object.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter/nf_tables.h>
+#include <linux/netfilter/nf_conntrack_tuple_common.h>
 }
 
 using namespace nft;
@@ -144,12 +145,55 @@ static bool add_expr_counter_ref(struct nftnl_rule* r, const char* counter_name)
     return true;
 }
 
-static bool add_expr_drop(struct nftnl_rule* r) {
+static bool add_expr_verdict(struct nftnl_rule* r, uint32_t verdict) {
     struct nftnl_expr* e = nftnl_expr_alloc("immediate");
     if (!e) return false;
     nftnl_expr_set_u32(e, NFTNL_EXPR_IMM_DREG, NFT_REG_VERDICT);
-    nftnl_expr_set_u32(e, NFTNL_EXPR_IMM_VERDICT, NF_DROP);
+    nftnl_expr_set_u32(e, NFTNL_EXPR_IMM_VERDICT, verdict);
     nftnl_rule_add_expr(r, e);
+    return true;
+}
+
+static bool add_expr_drop(struct nftnl_rule* r) {
+    return add_expr_verdict(r, NF_DROP);
+}
+
+// ct direction reply
+//
+// Emits the two expressions nft compiles `ct direction reply` into:
+//   [ ct load direction => reg 1 ]
+//   [ cmp eq reg 1 0x00000001 ]
+//
+// Direction, not state, is what distinguishes "a reply to a connection this
+// host opened" from "a packet of a connection someone opened to this host".
+// The ct state bitmap cannot express that: NF_CT_STATE_BIT() reduces ctinfo
+// modulo IP_CT_IS_REPLY, so IP_CT_ESTABLISHED and IP_CT_ESTABLISHED_REPLY
+// collapse onto the same bit and the direction is lost before a rule can test
+// it. NFT_CT_DIRECTION reads the same ctinfo through CTINFO2DIR instead.
+//
+// The kernel stores the direction with nft_reg_store8 and registers the
+// expression with a length of one byte, so the comparison operand is a single
+// byte — unlike the u32 operands used against payload data.
+static bool add_expr_ct_direction_reply(struct nftnl_rule* r) {
+    struct nftnl_expr* ct = nftnl_expr_alloc("ct");
+    if (!ct) return false;
+    nftnl_expr_set_u32(ct, NFTNL_EXPR_CT_KEY, NFT_CT_DIRECTION);
+    nftnl_expr_set_u32(ct, NFTNL_EXPR_CT_DREG, NFT_REG_1);
+    nftnl_rule_add_expr(r, ct);
+
+    struct nftnl_expr* cmp = nftnl_expr_alloc("cmp");
+    if (!cmp) return false;
+    const uint8_t reply = IP_CT_DIR_REPLY;
+    nftnl_expr_set_u32(cmp, NFTNL_EXPR_CMP_SREG, NFT_REG_1);
+    nftnl_expr_set_u32(cmp, NFTNL_EXPR_CMP_OP, NFT_CMP_EQ);
+    // nftnl_expr_set copies the operand, so this local may go out of scope.
+    // It returns non-zero on failure, leaving the attribute unset — which would
+    // otherwise produce a silently malformed expression.
+    int rc = nftnl_expr_set(cmp, NFTNL_EXPR_CMP_DATA, &reply,
+                            static_cast<uint32_t>(sizeof(reply)));
+    nftnl_rule_add_expr(r, cmp);
+    if (rc != 0) return false;
+
     return true;
 }
 
@@ -178,6 +222,26 @@ static bool add_rule_counter_ref(NlBatch& batch, uint32_t family, const char* ta
                                  const char* chain) {
     return add_rule_with(batch, family, table, chain, [](nftnl_rule* r) {
         return add_expr_counter_ref(r, COUNTER_NAME);
+    });
+}
+
+// Rule: ct direction reply accept
+//
+// Placed at the top of the input/forward chains, after the "processed" counter.
+// Without it the ingress rules also match reply traffic to locally-originated
+// connections: in the input chain `ip saddr` is the remote peer for *every*
+// inbound packet, including the SYN-ACK answering our own SYN. Accepting the
+// reply direction first leaves every packet of a remotely-originated connection
+// — new and established alike — to be tested against the ingress sets, so
+// adding an address still cuts the sessions it opened to us.
+//
+// `accept` terminates evaluation of this chain only — base chains belonging to
+// other tables on the same hook still run.
+static bool add_rule_ct_reply_accept(NlBatch& batch, uint32_t family,
+                                     const char* table, const char* chain) {
+    return add_rule_with(batch, family, table, chain, [](nftnl_rule* r) {
+        return add_expr_ct_direction_reply(r)
+            && add_expr_verdict(r, NF_ACCEPT);
     });
 }
 
@@ -326,6 +390,17 @@ NlResult CreateTableOp::execute(NlSocket& sock) {
         || !add_rule_counter_ref(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_INPUT)
         || !add_rule_counter_ref(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_FORWARD))
         return {false, "failed to build 'processed' counter rules"};
+
+    // Rules: "ct direction reply accept" on input + forward chains.
+    // Must be appended after the counter rules and before the per-set rules so
+    // that "processed" still counts every packet.
+    if (cfg_->accept_reply_traffic) {
+        if (!add_rule_ct_reply_accept(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_INPUT)
+            || !add_rule_ct_reply_accept(batch, NFPROTO_IPV4, cfg_->table_v4.c_str(), CHAIN_FORWARD)
+            || !add_rule_ct_reply_accept(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_INPUT)
+            || !add_rule_ct_reply_accept(batch, NFPROTO_IPV6, cfg_->table_v6.c_str(), CHAIN_FORWARD))
+            return {false, "failed to build conntrack reply-accept rules"};
+    }
 
     // Rules per set
     for (const auto& sd : cfg_->sets) {

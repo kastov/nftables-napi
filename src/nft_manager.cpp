@@ -225,6 +225,23 @@ static std::vector<std::string> parse_optional_string_array(Napi::Env env, Napi:
     return result;
 }
 
+// Parse an optional boolean option. Absent, undefined and null all yield
+// default_value; anything that is not a boolean is a TypeError rather than being
+// coerced — a firewall option silently reading "false" as true is not acceptable.
+static bool parse_optional_bool(Napi::Env env, Napi::Object opts,
+                                const char* field_name, const char* context,
+                                bool default_value) {
+    if (!opts.Has(field_name)) return default_value;
+    Napi::Value v = opts.Get(field_name);
+    if (v.IsUndefined() || v.IsNull()) return default_value;
+    if (!v.IsBoolean()) {
+        std::string msg = std::string(context) + ": '" + field_name + "' must be a boolean";
+        Napi::TypeError::New(env, msg).ThrowAsJavaScriptException();
+        return default_value;
+    }
+    return v.As<Napi::Boolean>().Value();
+}
+
 Napi::Object NftManager::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "NftManager", {
         InstanceMethod<&NftManager::CreateTable>("createTable"),
@@ -324,25 +341,22 @@ NftManager::NftManager(const Napi::CallbackInfo& info)
         }
     }
 
-    // logging — optional boolean, defaults to true (log ingress drops).
-    // When false, ingress rules are built without the log expression at all.
-    bool logging = true;
-    if (opts.Has("logging")) {
-        Napi::Value lv = opts.Get("logging");
-        if (!lv.IsUndefined() && !lv.IsNull()) {
-            if (!lv.IsBoolean()) {
-                Napi::TypeError::New(env, "NftManager: 'logging' must be a boolean")
-                    .ThrowAsJavaScriptException();
-                return;
-            }
-            logging = lv.As<Napi::Boolean>().Value();
-        }
-    }
+    // logging — log ingress drops. When false, ingress rules are built without
+    // the log expression at all.
+    bool logging = parse_optional_bool(env, opts, "logging", "NftManager", true);
+    if (env.IsExceptionPending()) return;
+
+    // acceptReplyTraffic — emit `ct direction reply accept` ahead of the ingress
+    // rules so reply traffic is not matched against the ingress sets.
+    bool accept_reply_traffic =
+        parse_optional_bool(env, opts, "acceptReplyTraffic", "NftManager", true);
+    if (env.IsExceptionPending()) return;
 
     std::string table_name = opts.Get("tableName").As<Napi::String>().Utf8Value();
 
     config_ = std::make_shared<const nft::NftConfig>(
-        nft::NftConfig::from_names(table_name, in_sets, out_sets, out_port_sets, logging));
+        nft::NftConfig::from_names(table_name, in_sets, out_sets, out_port_sets,
+                                   logging, accept_reply_traffic));
 
     sock_ = std::make_shared<NlSocket>();
 

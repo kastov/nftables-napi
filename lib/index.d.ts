@@ -43,6 +43,34 @@ export interface NftManagerOptions {
      * for it to take effect.
      */
     logging?: boolean;
+    /**
+     * Accept reply traffic before the ingress sets are consulted. Default: `true`.
+     *
+     * Emits `ct direction reply accept` at the top of the input and forward
+     * chains, right after the "processed" counter.
+     *
+     * Without it the ingress rules also match reply traffic: in the input chain
+     * `ip saddr` is the remote peer for *every* inbound packet, including the
+     * SYN-ACK answering a connection this host opened itself. An ingress set
+     * containing a network the host talks to therefore breaks outbound
+     * connections to it, and the set's counter fills with your own reply
+     * packets rather than with blocked connection attempts.
+     *
+     * The rule matches on conntrack *direction*, not state, so it only lets
+     * through packets flowing back to a connection this host originated.
+     * Connections opened *to* this host stay subject to the sets for their whole
+     * lifetime — adding an address still cuts its open inbound sessions, not
+     * just its next connection attempt.
+     *
+     * `accept` ends evaluation of this chain only; base chains of other tables
+     * on the same hook still run. Requires conntrack to be available: the rule
+     * makes nftables take a conntrack dependency, and `createTable()` fails if
+     * the kernel cannot provide it. The output chain is never touched.
+     *
+     * Applied at table creation time: construct with the desired value and call
+     * `createTable()` for it to take effect.
+     */
+    acceptReplyTraffic?: boolean;
 }
 
 /** Options for adding a single address. */
@@ -151,6 +179,7 @@ export class NftManager {
      * Creates:
      * - Named counter "processed" (global traffic counter per chain)
      * - Named counter per set (blocked traffic counter)
+     * - `ct direction reply accept` on input and forward (unless `acceptReplyTraffic` is false)
      * - Input chain with log + counter + drop rules (for ingressAddrSets; log omitted when `logging` is false)
      * - Forward chain with log + counter + drop rules (for ingressAddrSets; log omitted when `logging` is false)
      * - Output chain with counter + drop rules (for egressAddrSets and egressPortSets, no log)
