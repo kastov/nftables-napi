@@ -2,7 +2,7 @@
 
 Native Node.js binding for nftables via libnftnl + libmnl. Manages IPv4/IPv6 firewall tables with dynamic IP sets, port blocking, named counters, and timeout support through direct netlink communication — no shell commands, no `nft` CLI.
 
-Requires Linux kernel ≥ 5.7 with `CAP_NET_ADMIN` or root.
+Requires Node.js ≥ 24 and a Linux kernel ≥ 5.7 with `CAP_NET_ADMIN` or root.
 
 ## Install
 
@@ -10,29 +10,28 @@ Requires Linux kernel ≥ 5.7 with `CAP_NET_ADMIN` or root.
 npm install nftables-napi
 ```
 
-Prebuilt binaries are included for `linux-x64` and `linux-arm64`, in two libc flavors. Both link against `libnftnl.so.11` — that soname is the same on every distro (libnftnl has kept it from 1.1.x through 1.3.x); the flavors differ only by libc:
+Prebuilt binaries ship for `linux-x64` and `linux-arm64`, in glibc and musl flavors. Nothing
+is compiled at install time — the package has **no runtime dependencies** and no build toolchain
+is ever invoked on your machine.
 
-| Flavor  | Built on        | Runtime               | Typical hosts            |
-| ------- | --------------- | --------------------- | ------------------------ |
-| `musl`  | Alpine          | musl + `libnftnl.so.11` | Alpine                 |
-| `glibc` | Debian trixie   | glibc + `libnftnl.so.11` | Debian 13+ / Ubuntu 24.04+ |
+| Flavor  | Runtime          | Covers                                        |
+| ------- | ---------------- | --------------------------------------------- |
+| `glibc` | glibc ≥ 2.28    | Debian 10+, Ubuntu 18.10+, RHEL 8+, Amazon Linux 2023 |
+| `musl`  | musl             | Alpine                                        |
 
-The loader probes the bundled binaries and uses the first one that loads on the host, so the right flavor is picked automatically. The glibc build is compiled on trixie (glibc 2.41) and targets trixie and newer. On an older glibc (Debian 12 / Ubuntu 22.04) no prebuild is compatible and the package compiles from source (requires `libnftnl-dev`, `libmnl-dev`, `pkg-config`, and a C++20 compiler).
+The loader picks the flavor from the host libc and falls back to probing, so the right binary is
+used automatically. The binaries declare Node-API v10, which is why Node 24 is the floor; glibc
+2.28 is Node's own floor, so any host that can run Node 24 can run this.
 
 ### Runtime dependencies
 
-The module dynamically links against `libnftnl` and `libmnl`. These must be present in the runtime environment. The `nft` CLI is **not** required — the module talks to the kernel directly via netlink.
-
-**Alpine** (uses the `musl` prebuild):
-
-```dockerfile
-RUN apk add --no-cache libnftnl libmnl
-```
-
-**Debian / Ubuntu** (uses the `glibc` prebuild):
+None. `libnftnl` and `libmnl` are linked **statically** into the binary, so there is nothing to
+`apk add` or `apt-get install`. The `nft` CLI is not required either — the module talks to the
+kernel directly via netlink.
 
 ```dockerfile
-RUN apt-get update && apt-get install -y libnftnl11 libmnl0 && rm -rf /var/lib/apt/lists/*
+FROM node:24-alpine
+RUN npm install nftables-napi   # that's it
 ```
 
 ## Usage
@@ -295,25 +294,34 @@ Minimum: **Linux 5.7**
 
 ## Building from source
 
+The build cross-compiles every target from a single machine using [Zig](https://ziglang.org/) as
+the C/C++ toolchain — no node-gyp, no Docker, no QEMU. It runs on macOS or Linux, x64 or arm64.
+
 ```bash
-# Dependencies (Debian/Ubuntu)
-sudo apt install pkg-config libnftnl-dev libmnl-dev build-essential
+npm install
 
-# Dependencies (Alpine)
-apk add pkgconfig libnftnl-dev libmnl-dev build-base python3
-
-# Build
+# Build all four binaries into prebuilds/. Downloads a pinned Zig on first run
+# and cross-builds static libnftnl + libmnl into .deps/ (both cached).
 npm run build
 
-# Run tests (requires root / CAP_NET_ADMIN)
+# Or just one target
+node scripts/build.mjs linux-arm64-musl
+
+# Run tests (needs Linux + CAP_NET_ADMIN)
 npm test
-
-# Prebuild for current platform
-npx prebuildify --napi --strip
-
-# Prebuild for linux/amd64 + linux/arm64 via Docker
-npm run prebuild:all
 ```
+
+To test a locally built binary against an installed copy, point at it directly:
+
+```bash
+NFTABLES_NAPI_BINDING=./prebuilds/linux-x64/nftables-napi.musl.node node -e "require('nftables-napi')"
+```
+
+The dependency build only prints progress; if a `configure` or `make` step fails its output is
+replayed automatically. Set `VERBOSE=1` to see everything as it happens, or `ZIG=/path/to/zig` to
+use an existing toolchain instead of the pinned download. The target
+matrix lives in [`scripts/targets.mjs`](scripts/targets.mjs); adding an architecture is a matter
+of adding an entry, since Zig can already target it.
 
 ## License
 

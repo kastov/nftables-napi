@@ -1,3 +1,7 @@
+#if !defined(NAPI_VERSION) || NAPI_VERSION < 10
+#error "nftables-napi requires Node-API v10 (Node.js >= 24). Build with -DNAPI_VERSION=10."
+#endif
+
 #include <napi.h>
 #include "nft_manager.h"
 

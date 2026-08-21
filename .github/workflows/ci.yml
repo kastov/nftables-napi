@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cache
+            .deps
+          key: toolchain-${{ hashFiles('scripts/zig.mjs', 'scripts/build-deps.mjs', 'scripts/targets.mjs') }}
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Test (musl)
+        run: |
+          docker run --rm --cap-add=NET_ADMIN -v "$PWD:/pkg" -w /pkg node:24-alpine \
+            sh -c "apk add --no-cache nftables && node --test test/test.mjs"
+
+      - name: Test (glibc)
+        run: |
+          docker run --rm --cap-add=NET_ADMIN -v "$PWD:/pkg" -w /pkg node:24.19-trixie-slim \
+            sh -c "apt-get update -qq && apt-get install -y -qq nftables && node --test test/test.mjs"
+
+      - name: Test (older glibc)
+        run: |
+          docker run --rm --cap-add=NET_ADMIN -v "$PWD:/pkg" -w /pkg node:24-bookworm-slim \
+            sh -c "apt-get update -qq && apt-get install -y -qq nftables && node --test test/test.mjs"

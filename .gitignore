@@ -7,3 +7,6 @@ out-arm64/
 .DS_Store
 example/
 .serena
+.cache
+.deps.cache/
+.deps/
