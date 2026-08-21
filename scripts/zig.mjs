@@ -30,6 +30,8 @@ const ZIG_SHA256 = {
 export const ROOT = path.resolve(import.meta.dirname, '..');
 export const CACHE = path.join(ROOT, '.cache');
 
+process.env.ZIG_GLOBAL_CACHE_DIR ??= path.join(CACHE, 'zig-global');
+
 const exists = (p) =>
     fs
         .stat(p)

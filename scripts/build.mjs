@@ -64,7 +64,7 @@ async function buildOne(target, zig, srcs) {
     ];
 
     process.stderr.write(`\nbuild ${target.name}: ${target.zig}\n`);
-    await run(zig, args, { cwd: ROOT });
+    await run(zig, args, { cwd: ROOT, quiet: true });
 
     const { size } = await fs.stat(output);
     process.stderr.write(

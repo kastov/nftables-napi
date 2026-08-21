@@ -18,7 +18,8 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: |
-            .cache
+            .cache/downloads
+            .cache/zig-global
             .deps
           key: toolchain-${{ hashFiles('scripts/zig.mjs', 'scripts/build-deps.mjs', 'scripts/targets.mjs') }}
 
